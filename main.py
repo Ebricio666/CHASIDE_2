@@ -273,108 +273,46 @@ else:
     st.plotly_chart(fig_violin, use_container_width=True)
 
 # ============================================
-# 🕸️ RADAR POR CARRERA · Verde vs Amarillo + Top 3 brechas y recomendación
+# 📌 RADAR CHART VERDE vs AMARILLO POR CARRERA
 # ============================================
-st.header("🕸️ Radar CHASIDE por carrera (Verde vs Amarillo)")
+import plotly.express as px
 
-# --- 1) Preparar totales por letra = INTERES + APTITUD ---
-areas = ['C','H','A','S','I','D','E']
+st.header("🕸️ Comparación Verde vs Amarillo por carrera (Radar CHASIDE)")
+
+# Total por letra = INTERES + APTITUD
+areas = ['C', 'H', 'A', 'S', 'I', 'D', 'E']
 df_radar = df.copy()
 for a in areas:
     df_radar[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
+
 df_radar['Categoría'] = df['Semáforo Vocacional']
-df_radar['Carrera']   = df[columna_carrera]
+df_radar['Carrera'] = df[columna_carrera]
 
-# --- 2) Diccionario de habilidades/aptitudes por letra (para recomendaciones) ---
-descripciones_chaside = {
-    "C": "Organización, supervisión, orden, análisis y síntesis, colaboración, cálculo.",
-    "H": "Precisión verbal, organización, relación de hechos, justicia, conciliación, persuasión, imaginación.",
-    "A": "Estético, creativo, detallista, innovador, intuitivo; habilidades visuales, auditivas y manuales.",
-    "S": "Asistir, investigar, precisión, percepción, análisis; ser altruista, paciente, respetuoso, comprensivo.",
-    "I": "Cálculo, pensamiento científico y crítico, exactitud, planificación; enfoque práctico y analítico.",
-    "D": "Justicia, equidad, colaboración, liderazgo; valentía, toma de riesgos y persuasión.",
-    "E": "Investigación, orden, organización, análisis y síntesis, cálculo numérico, observación, método y seguridad."
-}
+# Selección de carrera
+carreras_disp = df_radar['Carrera'].dropna().unique()
+carrera_sel = st.selectbox("Elige una carrera para comparar:", sorted(carreras_disp))
 
-# --- 3) Selector de carrera para visualizar el radar y una tabla resumen global abajo ---
-carreras_disp = sorted(df_radar['Carrera'].dropna().unique())
-carrera_sel = st.selectbox("Elige una carrera para visualizar el radar:", carreras_disp)
-
-def promedios_verde_amarillo(df_carrera):
-    sub = df_carrera[df_carrera['Categoría'].isin(['Verde','Amarillo'])]
-    if sub.empty or sub['Categoría'].nunique() < 2:
-        return None
-    return sub.groupby('Categoría')[areas].mean()
-
-def top3_brechas(prom):
-    """Devuelve (serie diffs ordenada desc, serie top3) donde diffs = Verde - Amarillo."""
-    diffs = prom.loc['Verde'] - prom.loc['Amarillo']
-    return diffs, diffs.sort_values(ascending=False).head(3)
-
-# --- 4) Mostrar radar y recomendaciones para la carrera seleccionada ---
 df_carrera = df_radar[df_radar['Carrera'] == carrera_sel]
-prom = promedios_verde_amarillo(df_carrera)
 
-if (prom is None) or ('Verde' not in prom.index) or ('Amarillo' not in prom.index):
-    st.warning("No hay datos suficientes de Verde y Amarillo para esta carrera.")
+if df_carrera.empty or not any(df_carrera['Categoría'].isin(['Verde','Amarillo'])):
+    st.warning("No hay datos suficientes de Verde/Amarillo en esta carrera.")
 else:
-    # Radar
-    df_plot = (
-        prom.reset_index()
-            .melt(id_vars='Categoría', value_vars=areas, var_name='Área', value_name='Promedio')
+    # Promedio por categoría
+    promedios = (
+        df_carrera[df_carrera['Categoría'].isin(['Verde','Amarillo'])]
+        .groupby('Categoría')[areas].mean().reset_index()
     )
+
+    # Radar chart
     fig_radar = px.line_polar(
-        df_plot,
-        r='Promedio', theta='Área', color='Categoría',
-        line_close=True, markers=True,
-        color_discrete_map={'Verde':'#22c55e','Amarillo':'#f59e0b'},
-        title=f"Perfil CHASIDE – {carrera_sel}: Verde vs Amarillo"
+        promedios.melt(id_vars='Categoría', value_vars=areas, var_name='Área', value_name='Promedio'),
+        r='Promedio',
+        theta='Área',
+        color='Categoría',
+        line_close=True,
+        markers=True,
+        title=f"Radar CHASIDE – {carrera_sel}"
     )
-    fig_radar.update_traces(fill='toself', opacity=0.7)
+
+    fig_radar.update_traces(fill='toself')
     st.plotly_chart(fig_radar, use_container_width=True)
-
-    # Brechas y recomendación
-    diffs, top3 = top3_brechas(prom)
-    st.subheader("📊 Brechas Verde − Amarillo por letra (positiva = Amarillo más bajo)")
-    st.dataframe(diffs.to_frame("Diferencia").round(2).sort_values("Diferencia", ascending=False))
-
-    st.markdown("**🔎 Áreas prioritarias de refuerzo (Top 3):**")
-    for letra, valor in top3.items():
-        st.markdown(f"- **{letra}**: diferencia **{valor:.2f}** · *Reforzar*: {descripciones_chaside[letra]}")
-
-# --- 5) Resumen ejecutivo para TODAS las carreras (tabla descargable) ---
-st.subheader("🧾 Resumen ejecutivo: Top 3 brechas por carrera")
-
-filas = []
-for car in carreras_disp:
-    prom_car = promedios_verde_amarillo(df_radar[df_radar['Carrera']==car])
-    if (prom_car is None) or ('Verde' not in prom_car.index) or ('Amarillo' not in prom_car.index):
-        filas.append({
-            "Carrera": car,
-            "Top1": "-", "ΔTop1": np.nan,
-            "Top2": "-", "ΔTop2": np.nan,
-            "Top3": "-", "ΔTop3": np.nan,
-            "Recomendación breve": "Sin datos suficientes (falta Verde o Amarillo)."
-        })
-        continue
-    diffs_car, top3_car = top3_brechas(prom_car)
-    letras = list(top3_car.index)
-    deltas = [round(v,2) for v in top3_car.values]
-    rec = " | ".join([f"{l}: {descripciones_chaside[l]}" for l in letras])
-    filas.append({
-        "Carrera": car,
-        "Top1": letras[0], "ΔTop1": deltas[0],
-        "Top2": letras[1] if len(letras)>1 else "-", "ΔTop2": deltas[1] if len(letras)>1 else np.nan,
-        "Top3": letras[2] if len(letras)>2 else "-", "ΔTop3": deltas[2] if len(letras)>2 else np.nan,
-        "Recomendación breve": rec
-    })
-
-tabla_brechas = pd.DataFrame(filas)
-st.dataframe(tabla_brechas, use_container_width=True)
-
-st.download_button(
-    "⬇️ Descargar resumen de brechas (CSV)",
-    data=tabla_brechas.to_csv(index=False).encode('utf-8'),
-    file_name="brechas_radar_por_carrera.csv",
-    mime="text/csv"
-)

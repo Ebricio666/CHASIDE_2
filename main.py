@@ -151,3 +151,80 @@ fig = px.pie(
 )
 fig.update_traces(textposition='inside', texttemplate='%{label}<br>%{percent:.1%} (%{value})')
 st.plotly_chart(fig,use_container_width=True)
+
+# ============================================
+# 📊 Barras apiladas por carrera (porcentaje vs cantidad)
+#    Categorías: Verde, Amarillo, No aceptable, Sin sugerencia
+# ============================================
+st.header("📊 Distribución por carrera y categoría")
+
+cats_order = ['Verde', 'Amarillo', 'No aceptable', 'Sin sugerencia']
+color_map = {
+    'Verde': '#22c55e',
+    'Amarillo': '#f59e0b',
+    'No aceptable': '#ef4444',
+    'Sin sugerencia': '#94a3b8'
+}
+
+# Agregado base
+stacked = (
+    df[df['Semáforo Vocacional'].isin(cats_order)]
+    .groupby([columna_carrera, 'Semáforo Vocacional'], dropna=False)
+    .size()
+    .reset_index(name='N')
+    .rename(columns={'Semáforo Vocacional': 'Categoría'})
+)
+
+# Asegurar orden categórico
+stacked['Categoría'] = pd.Categorical(stacked['Categoría'], categories=cats_order, ordered=True)
+
+# Selector de modo
+modo = st.radio(
+    "Modo de visualización",
+    options=["Proporción (100% apilado)", "Valores absolutos"],
+    horizontal=True,
+    index=0
+)
+
+if modo == "Proporción (100% apilado)":
+    # porcentaje dentro de cada carrera
+    stacked['%'] = (
+        stacked.groupby(columna_carrera)['N']
+        .transform(lambda x: 0 if x.sum()==0 else (x / x.sum() * 100))
+    )
+    fig_stacked = px.bar(
+        stacked,
+        x=columna_carrera, y='%',
+        color='Categoría',
+        category_orders={'Categoría': cats_order},
+        color_discrete_map=color_map,
+        barmode='stack',
+        text=stacked['%'].round(1).astype(str) + '%',
+        title="Proporción (%) de estudiantes por carrera y categoría"
+    )
+    fig_stacked.update_layout(
+        yaxis_title="Proporción (%)",
+        xaxis_title="Carrera",
+        xaxis_tickangle=-30,
+        height=620
+    )
+else:
+    fig_stacked = px.bar(
+        stacked,
+        x=columna_carrera, y='N',
+        color='Categoría',
+        category_orders={'Categoría': cats_order},
+        color_discrete_map=color_map,
+        barmode='stack',
+        text='N',
+        title="Estudiantes por carrera y categoría (valores absolutos)"
+    )
+    fig_stacked.update_layout(
+        yaxis_title="Número de estudiantes",
+        xaxis_title="Carrera",
+        xaxis_tickangle=-30,
+        height=620
+    )
+    fig_stacked.update_traces(textposition='inside', cliponaxis=False)
+
+st.plotly_chart(fig_stacked, use_container_width=True)

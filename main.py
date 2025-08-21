@@ -228,3 +228,47 @@ else:
     fig_stacked.update_traces(textposition='inside', cliponaxis=False)
 
 st.plotly_chart(fig_stacked, use_container_width=True)
+
+# ============================================
+# 🎻 Diagrama de violín – Verde vs Amarillo por carrera
+# ============================================
+st.header("🎻 Distribución de puntajes (Violin plot) – Verde vs Amarillo")
+
+# Recalcular Score máximo ponderado
+score_cols = [f'PUNTAJE_COMBINADO_{a}' for a in areas]
+df_scores = df.copy()
+df_scores['Score'] = df_scores[score_cols].max(axis=1)
+
+# Filtrar solo Verde y Amarillo
+df_violin = df_scores[df_scores['Semáforo Vocacional'].isin(['Verde','Amarillo'])].copy()
+
+if df_violin.empty:
+    st.info("No hay estudiantes en categorías Verde o Amarillo para graficar.")
+else:
+    fig_violin = px.violin(
+        df_violin,
+        x=columna_carrera,
+        y="Score",
+        color="Semáforo Vocacional",
+        box=True,            # añade boxplot dentro
+        points="all",        # muestra outliers y todos los puntos
+        color_discrete_map={"Verde":"#22c55e","Amarillo":"#f59e0b"},
+        title="Distribución de puntajes por carrera (Verde vs Amarillo)"
+    )
+
+    fig_violin.update_layout(
+        xaxis_title="Carrera",
+        yaxis_title="Score combinado",
+        xaxis_tickangle=-30,
+        height=720
+    )
+    st.plotly_chart(fig_violin, use_container_width=True)
+
+    # Mostrar tabla con resumen de stats
+    st.subheader("📊 Resumen estadístico por carrera y categoría")
+    resumen_violin = (
+        df_violin.groupby([columna_carrera,"Semáforo Vocacional"])["Score"]
+        .describe()[["count","mean","std","min","25%","50%","75%","max"]]
+        .round(2)
+    )
+    st.dataframe(resumen_violin)

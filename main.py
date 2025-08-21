@@ -230,16 +230,14 @@ else:
 st.plotly_chart(fig_stacked, use_container_width=True)
 
 # ============================================
-# 🎻 Diagrama de violín – Verde vs Amarillo (sin puntos)
+# 🎻 Diagrama de violín – Verde vs Amarillo (con separadores de carrera)
 # ============================================
 st.header("🎻 Distribución de puntajes (Violin plot) – Verde vs Amarillo")
 
-# Score máximo ponderado
-score_cols = [f'PUNTAJE_COMBINADO_{a}' for a in areas]
 df_scores = df.copy()
-df_scores['Score'] = df_scores[score_cols].max(axis=1)
+df_scores['Score'] = df_scores[[f'PUNTAJE_COMBINADO_{a}' for a in areas]].max(axis=1)
 
-# Filtrar solo Verde y Amarillo
+# Filtrar categorías de interés
 df_violin = df_scores[df_scores['Semáforo Vocacional'].isin(['Verde','Amarillo'])].copy()
 
 if df_violin.empty:
@@ -250,11 +248,21 @@ else:
         x=columna_carrera,
         y="Score",
         color="Semáforo Vocacional",
-        box=True,            # añade boxplot interno
-        points=False,        # 🔹 sin puntos
-        color_discrete_map={"Verde":"#22c55e","Amarillo":"#f59e0b"},
+        box=True,
+        points=False,
+        color_discrete_map={"Verde": "#22c55e", "Amarillo": "#f59e0b"},
         title="Distribución de puntajes por carrera (Verde vs Amarillo)"
     )
+
+    # Añadir líneas punteadas verticales entre carreras
+    categorias = df_violin[columna_carrera].unique()
+    for i in range(len(categorias) - 1):
+        fig_violin.add_vline(
+            x=i + 0.5,                 # justo entre categorías
+            line_width=1,
+            line_dash="dot",
+            line_color="gray"
+        )
 
     fig_violin.update_layout(
         xaxis_title="Carrera",

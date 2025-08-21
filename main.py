@@ -273,46 +273,66 @@ else:
     st.plotly_chart(fig_violin, use_container_width=True)
 
 # ============================================
-# 📌 RADAR CHART VERDE vs AMARILLO POR CARRERA
+# 🕸️ Radar CHASIDE por carrera (pestañas) · Verde vs Amarillo + áreas a reforzar
 # ============================================
 import plotly.express as px
 
-st.header("🕸️ Comparación Verde vs Amarillo por carrera (Radar CHASIDE)")
+st.header("🕸️ Radar CHASIDE por carrera – Verde vs Amarillo")
 
-# Total por letra = INTERES + APTITUD
+# Totales por letra = INTERES + APTITUD
 areas = ['C', 'H', 'A', 'S', 'I', 'D', 'E']
 df_radar = df.copy()
 for a in areas:
     df_radar[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
-
 df_radar['Categoría'] = df['Semáforo Vocacional']
-df_radar['Carrera'] = df[columna_carrera]
+df_radar['Carrera']   = df[columna_carrera]
 
-# Selección de carrera
-carreras_disp = df_radar['Carrera'].dropna().unique()
-carrera_sel = st.selectbox("Elige una carrera para comparar:", sorted(carreras_disp))
+# Descripciones resumidas para recomendaciones
+descripciones_chaside = {
+    "C": "Organización, orden, análisis/síntesis, colaboración, cálculo.",
+    "H": "Precisión verbal, relación de hechos, justicia, persuasión.",
+    "A": "Creatividad, detalle, intuición; habilidades visuales/auditivas/manuales.",
+    "S": "Investigación, precisión, percepción, análisis; altruismo y paciencia.",
+    "I": "Cálculo, pensamiento científico/crítico, exactitud, planificación.",
+    "D": "Justicia, equidad, colaboración, liderazgo; toma de decisiones.",
+    "E": "Investigación, análisis y síntesis, cálculo numérico, observación, método."
+}
 
-df_carrera = df_radar[df_radar['Carrera'] == carrera_sel]
-
-if df_carrera.empty or not any(df_carrera['Categoría'].isin(['Verde','Amarillo'])):
-    st.warning("No hay datos suficientes de Verde/Amarillo en esta carrera.")
+# Carreras disponibles y pestañas
+carreras_disp = sorted(df_radar['Carrera'].dropna().unique())
+if not carreras_disp:
+    st.info("No hay carreras para mostrar en el radar.")
 else:
-    # Promedio por categoría
-    promedios = (
-        df_carrera[df_carrera['Categoría'].isin(['Verde','Amarillo'])]
-        .groupby('Categoría')[areas].mean().reset_index()
-    )
+    tabs = st.tabs(carreras_disp)
 
-    # Radar chart
-    fig_radar = px.line_polar(
-        promedios.melt(id_vars='Categoría', value_vars=areas, var_name='Área', value_name='Promedio'),
-        r='Promedio',
-        theta='Área',
-        color='Categoría',
-        line_close=True,
-        markers=True,
-        title=f"Radar CHASIDE – {carrera_sel}"
-    )
+    for tab, carrera_sel in zip(tabs, carreras_disp):
+        with tab:
+            sub = df_radar[df_radar['Carrera'] == carrera_sel]
+            sub = sub[sub['Categoría'].isin(['Verde', 'Amarillo'])]
 
-    fig_radar.update_traces(fill='toself')
-    st.plotly_chart(fig_radar, use_container_width=True)
+            if sub.empty or sub['Categoría'].nunique() < 2:
+                st.warning("No hay datos suficientes de Verde y Amarillo en esta carrera.")
+                continue
+
+            # Promedios por categoría (Verde/Amarillo)
+            prom = sub.groupby('Categoría')[areas].mean().reset_index()
+
+            # Radar
+            fig = px.line_polar(
+                prom.melt(id_vars='Categoría', value_vars=areas, var_name='Área', value_name='Promedio'),
+                r='Promedio', theta='Área', color='Categoría',
+                line_close=True, markers=True,
+                color_discrete_map={'Verde':'#22c55e','Amarillo':'#f59e0b'},
+                title=f"Perfil CHASIDE – {carrera_sel}"
+            )
+            fig.update_traces(fill='toself', opacity=0.75)
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Top 3 brechas (Verde - Amarillo)
+            prom_w = sub.groupby('Categoría')[areas].mean()
+            diffs = (prom_w.loc['Verde'] - prom_w.loc['Amarillo']).sort_values(ascending=False)
+            top3 = diffs.head(3)
+
+            st.markdown("**Áreas a reforzar (donde *Amarillo* está más bajo):**")
+            for letra, delta in top3.items():
+                st.markdown(f"- **{letra}** (Δ = {delta:.2f}): {descripciones_chaside[letra]}")

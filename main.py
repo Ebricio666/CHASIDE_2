@@ -553,15 +553,17 @@ else:
 
             # Líneas
             for _, row in df_plot.iterrows():
-                fig.add_shape(
-                    type='line',
-                    x0=row['Riesgo'],
-                    x1=row['Transicion'],
-                    y0=row['Área'],
-                    y1=row['Área'],
-                    line=dict(color=row['Color'], width=4)
-                )
+                x_min = min(row['Riesgo'], row['Transicion'])
+x_max = max(row['Riesgo'], row['Transicion'])
 
+fig.add_shape(
+    type='line',
+    x0=x_min,
+    x1=x_max,
+    y0=row['Área'],
+    y1=row['Área'],
+    line=dict(color=row['Color'], width=4)
+)
             # 🔴 Perfil en riesgo
             fig.add_scatter(
                 x=df_plot['Riesgo'],

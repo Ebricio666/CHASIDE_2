@@ -178,6 +178,8 @@ df['Carrera_Mejor_Perfilada'] = df.apply(carrera_mejor, axis=1)
 df['Diagnóstico Primario Vocacional'] = df.apply(diagnostico, axis=1)
 df['Semáforo Vocacional'] = df.apply(semaforo, axis=1)
 # ============================================
+
+# ============================================
 # 📌 DIAGRAMA DE PASTEL
 # ============================================
 st.subheader("🥧 Diagnóstico general (Pastel)")
@@ -194,7 +196,6 @@ mapa_categorias_pastel = {
 df_pastel = df.copy()
 df_pastel['Categoría_Pastel'] = df_pastel['Semáforo Vocacional'].replace(mapa_categorias_pastel)
 
-# Si existieran simultáneamente "Rojo" y "Sin sugerencia", ambos se fusionan
 resumen = (
     df_pastel['Categoría_Pastel']
     .value_counts()
@@ -230,13 +231,13 @@ fig = px.pie(
     }
 )
 
-# Quitar texto dentro de las porciones
+# Solo porcentaje dentro del pastel
 fig.update_traces(
-    textinfo='none',
+    textposition='inside',
+    texttemplate='%{percent:.1%}',
     hovertemplate='<b>%{label}</b><br>Porcentaje: %{percent}<br>N: %{value}<extra></extra>'
 )
 
-# Leyenda lateral
 fig.update_layout(
     legend_title_text="Categoría",
     legend=dict(
@@ -327,43 +328,157 @@ st.plotly_chart(fig_stacked, use_container_width=True)
 # ============================================
 # 🎻 Diagrama de violín – Verde vs Amarillo
 # ============================================
-st.header("🎻 Distribución de puntajes (Violin plot) – Verde vs Amarillo")
+# ============================================
+# 📊 Barra vertical de intensidad – Amarillo vs Verde
+# ============================================
+st.header("📊 Intensidad del perfil vocacional por carrera")
 
-df_scores = df.copy()
-df_scores['Score'] = df_scores[[f'PUNTAJE_COMBINADO_{a}' for a in areas]].max(axis=1)
+st.caption(
+    "La barra apilada ordena a los estudiantes desde el nivel más bajo del grupo amarillo "
+    "hasta el nivel más alto del grupo verde. El gradiente rojo→verde facilita identificar "
+    "riesgo vocacional y potencial de ajuste al perfil."
+)
 
-df_violin = df_scores[df_scores['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])].copy()
+df_intensidad = df.copy()
+df_intensidad['Score'] = df_intensidad[[f'PUNTAJE_COMBINADO_{a}' for a in areas]].max(axis=1)
 
-if df_violin.empty:
-    st.info("No hay estudiantes en categorías Verde o Amarillo para graficar.")
+# Solo usamos Verde y Amarillo
+df_intensidad = df_intensidad[df_intensidad['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])].copy()
+
+if df_intensidad.empty:
+    st.info("No hay estudiantes en categorías Verde o Amarillo para construir la barra de intensidad.")
 else:
-    fig_violin = px.violin(
-        df_violin,
+    def asignar_bloques_por_carrera(grupo):
+        grupo = grupo.copy()
+
+        amar = grupo[grupo['Semáforo Vocacional'] == 'Amarillo'].copy()
+        ver = grupo[grupo['Semáforo Vocacional'] == 'Verde'].copy()
+
+        # Inicializar
+        grupo['Bloque_Intensidad'] = np.nan
+
+        # Amarillo: del peor al mejor
+        if len(amar) > 0:
+            amar = amar.sort_values('Score', ascending=True).copy()
+            amar['rank_pct'] = (np.arange(len(amar)) + 1) / len(amar)
+
+            amar['Bloque_Intensidad'] = np.select(
+                [
+                    amar['rank_pct'] <= 0.25,
+                    amar['rank_pct'] <= 0.50,
+                    amar['rank_pct'] <= 0.75,
+                    amar['rank_pct'] <= 1.00,
+                ],
+                ['A4', 'A3', 'A2', 'A1'],
+                default='A1'
+            )
+            grupo.loc[amar.index, 'Bloque_Intensidad'] = amar['Bloque_Intensidad']
+
+        # Verde: del más bajo al más alto
+        if len(ver) > 0:
+            ver = ver.sort_values('Score', ascending=True).copy()
+            ver['rank_pct'] = (np.arange(len(ver)) + 1) / len(ver)
+
+            ver['Bloque_Intensidad'] = np.select(
+                [
+                    ver['rank_pct'] <= 0.25,
+                    ver['rank_pct'] <= 0.50,
+                    ver['rank_pct'] <= 0.75,
+                    ver['rank_pct'] <= 1.00,
+                ],
+                ['V4', 'V3', 'V2', 'V1'],
+                default='V1'
+            )
+            grupo.loc[ver.index, 'Bloque_Intensidad'] = ver['Bloque_Intensidad']
+
+        return grupo
+
+    df_intensidad = (
+        df_intensidad
+        .groupby(columna_carrera, group_keys=False)
+        .apply(asignar_bloques_por_carrera)
+        .copy()
+    )
+
+    orden_bloques = ['A4', 'A3', 'A2', 'A1', 'V4', 'V3', 'V2', 'V1']
+
+    etiquetas_bloques = {
+        'A4': 'Sin perfil',
+        'A3': 'Amarillo - Cuartil 3',
+        'A2': 'Amarillo - Cuartil 2',
+        'A1': 'Amarillo - Cuartil 1',
+        'V4': 'Verde - Cuartil 4',
+        'V3': 'Verde - Cuartil 3',
+        'V2': 'Verde - Cuartil 2',
+        'V1': 'Jóven promesa'
+    }
+
+    colores_bloques = {
+        'A4': '#b91c1c',   # rojo intenso
+        'A3': '#dc2626',   # rojo
+        'A2': '#f97316',   # naranja
+        'A1': '#f59e0b',   # ámbar
+        'V4': '#a3e635',   # lima
+        'V3': '#4ade80',   # verde claro
+        'V2': '#22c55e',   # verde
+        'V1': '#15803d'    # verde profundo
+    }
+
+    resumen_intensidad = (
+        df_intensidad
+        .groupby([columna_carrera, 'Bloque_Intensidad'], dropna=False)
+        .size()
+        .reset_index(name='N')
+    )
+
+    resumen_intensidad['Bloque_Intensidad'] = pd.Categorical(
+        resumen_intensidad['Bloque_Intensidad'],
+        categories=orden_bloques,
+        ordered=True
+    )
+
+    # porcentaje acumulado por carrera
+    resumen_intensidad['%'] = (
+        resumen_intensidad.groupby(columna_carrera)['N']
+        .transform(lambda x: 0 if x.sum() == 0 else (x / x.sum() * 100))
+    )
+
+    resumen_intensidad['Etiqueta'] = resumen_intensidad['Bloque_Intensidad'].map(etiquetas_bloques)
+
+    fig_intensidad = px.bar(
+        resumen_intensidad,
         x=columna_carrera,
-        y="Score",
-        color="Semáforo Vocacional",
-        box=True,
-        points=False,
-        color_discrete_map={"Verde": "#22c55e", "Amarillo": "#f59e0b"},
-        title="Distribución de puntajes por carrera (Verde vs Amarillo)"
+        y='%',
+        color='Bloque_Intensidad',
+        category_orders={'Bloque_Intensidad': orden_bloques},
+        color_discrete_map=colores_bloques,
+        barmode='stack',
+        text=resumen_intensidad['%'].round(1).astype(str) + '%',
+        title="Escala de intensidad vocacional por carrera"
     )
 
-    categorias = df_violin[columna_carrera].unique()
-    for i in range(len(categorias) - 1):
-        fig_violin.add_vline(
-            x=i + 0.5,
-            line_width=1,
-            line_dash="dot",
-            line_color="gray"
-        )
-
-    fig_violin.update_layout(
+    fig_intensidad.update_layout(
+        yaxis_title="Proporción (%)",
         xaxis_title="Carrera",
-        yaxis_title="Score combinado",
         xaxis_tickangle=-30,
-        height=720
+        height=720,
+        legend_title_text="Nivel de intensidad"
     )
-    st.plotly_chart(fig_violin, use_container_width=True)
+
+    fig_intensidad.update_traces(
+        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>Porcentaje: %{y:.1f}%<extra></extra>",
+        customdata=np.stack([resumen_intensidad['Etiqueta']], axis=-1)
+    )
+
+    st.plotly_chart(fig_intensidad, use_container_width=True)
+
+    st.markdown("### Lectura sugerida de la escala")
+    st.markdown("""
+- **Sin perfil**: estudiantes ubicados en el tramo más bajo del grupo amarillo.  
+- **Perfil en riesgo**: estudiantes aún en amarillo, pero con mejor puntaje relativo.  
+- **Perfil en transición**: estudiantes ya en verde, aunque todavía en los tramos bajos o medios.  
+- **Jóven promesa**: estudiantes en el cuartil más alto del grupo verde.  
+""")
 
 # ============================================
 # 🕸️ Radar CHASIDE por carrera · Verde vs Amarillo

@@ -593,3 +593,117 @@ else:
                 f"- **{row['Área']}** → Diferencia de {row['Brecha']:.2f} puntos "
                 f"(Verde: {row['Verde']:.2f} vs Amarillo: {row['Amarillo']:.2f})"
             )
+
+import plotly.graph_objects as go
+
+# ============================================
+# 🌊 Diagrama de Sankey: carrera elegida vs carrera sugerida
+# ============================================
+st.header("🌊 Migración potencial entre carreras según CHASIDE")
+
+st.caption(
+    "El diagrama muestra cómo podrían redistribuirse los estudiantes desde la carrera elegida "
+    "hacia la carrera con mejor ajuste al perfil CHASIDE."
+)
+
+df_sankey = df.copy()
+
+# Tomar solo casos válidos para sugerencia de migración
+df_sankey = df_sankey[
+    ~df_sankey['Carrera_Mejor_Perfilada'].isin([
+        'Información no confiable',
+        'Sin sugerencia clara'
+    ])
+].copy()
+
+# Convertir a string y limpiar
+df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
+df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].astype(str).str.strip()
+
+if df_sankey.empty:
+    st.info("No hay datos suficientes para construir el Sankey.")
+else:
+    # --------------------------------------------
+    # Conteos iniciales y finales
+    # --------------------------------------------
+    iniciales = df_sankey[columna_carrera].value_counts().to_dict()
+    finales = df_sankey['Carrera_Mejor_Perfilada'].value_counts().to_dict()
+
+    carreras_origen = sorted(df_sankey[columna_carrera].unique())
+    carreras_destino = sorted(df_sankey['Carrera_Mejor_Perfilada'].unique())
+
+    # Etiquetas con n inicial y final
+    labels_origen = [
+        f"{c}<br>Inicial: {iniciales.get(c, 0)}"
+        for c in carreras_origen
+    ]
+    labels_destino = [
+        f"{c}<br>Final: {finales.get(c, 0)}"
+        for c in carreras_destino
+    ]
+
+    labels = labels_origen + labels_destino
+
+    # Índices de nodos
+    source_map = {c: i for i, c in enumerate(carreras_origen)}
+    target_map = {c: i + len(carreras_origen) for i, c in enumerate(carreras_destino)}
+
+    # --------------------------------------------
+    # Flujos
+    # --------------------------------------------
+    flujos = (
+        df_sankey
+        .groupby([columna_carrera, 'Carrera_Mejor_Perfilada'])
+        .size()
+        .reset_index(name='N')
+    )
+
+    source = flujos[columna_carrera].map(source_map).tolist()
+    target = flujos['Carrera_Mejor_Perfilada'].map(target_map).tolist()
+    value = flujos['N'].tolist()
+
+    # Hover personalizado
+    customdata = np.stack(
+        [
+            flujos[columna_carrera],
+            flujos['Carrera_Mejor_Perfilada'],
+            flujos['N']
+        ],
+        axis=-1
+    )
+
+    # Colores base por nodo
+    node_colors = (
+        ['#60a5fa'] * len(carreras_origen) +   # azul lado izquierdo
+        ['#34d399'] * len(carreras_destino)    # verde lado derecho
+    )
+
+    fig = go.Figure(data=[go.Sankey(
+        arrangement="snap",
+        node=dict(
+            pad=18,
+            thickness=20,
+            line=dict(color="gray", width=0.5),
+            label=labels,
+            color=node_colors
+        ),
+        link=dict(
+            source=source,
+            target=target,
+            value=value,
+            customdata=customdata,
+            hovertemplate=(
+                "Carrera elegida: %{customdata[0]}<br>"
+                "Carrera sugerida: %{customdata[1]}<br>"
+                "Estudiantes: %{customdata[2]}<extra></extra>"
+            )
+        )
+    )])
+
+    fig.update_layout(
+        title="Migración potencial entre carreras",
+        font=dict(size=13),
+        height=700
+    )
+
+    st.plotly_chart(fig, use_container_width=True)

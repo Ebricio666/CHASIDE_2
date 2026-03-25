@@ -479,61 +479,168 @@ else:
 - **Jóven promesa**: estudiantes en el cuartil superior del grupo verde, con el mejor ajuste vocacional relativo dentro de su carrera.  
 """)
 # ============================================
-# 🕸️ Radar CHASIDE por carrera · Verde vs Amarillo
+# 📍 Diagrama de mancuernas CHASIDE por carrera
 # ============================================
-st.header("🕸️ Radar CHASIDE por carrera – Verde vs Amarillo")
+st.header("📍 Comparación de perfil vocacional por carrera (Mancuernas)")
 
-df_radar = df.copy()
+st.caption(
+    "Cada línea compara el promedio del grupo con perfil incorrecto (amarillo) frente al grupo "
+    "con perfil correcto (verde) en cada dimensión CHASIDE. "
+    "Rojo indica que el grupo amarillo está por detrás del verde; "
+    "verde indica que el amarillo iguala o supera al verde."
+)
+
+df_mancuerna = df.copy()
 for a in areas:
-    df_radar[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
+    df_mancuerna[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
 
-df_radar['Categoría'] = df['Semáforo Vocacional']
-df_radar['Carrera'] = df[columna_carrera]
+df_mancuerna['Categoría'] = df['Semáforo Vocacional']
+df_mancuerna['Carrera'] = df[columna_carrera]
 
-descripciones_chaside = {
-    "C": "Organización, orden, análisis/síntesis, colaboración, cálculo.",
-    "H": "Precisión verbal, relación de hechos, justicia, persuasión.",
-    "A": "Creatividad, detalle, intuición; habilidades visuales/auditivas/manuales.",
-    "S": "Investigación, precisión, percepción, análisis; altruismo y paciencia.",
-    "I": "Cálculo, pensamiento científico/crítico, exactitud, planificación.",
-    "D": "Justicia, equidad, colaboración, liderazgo; toma de decisiones.",
-    "E": "Investigación, análisis y síntesis, cálculo numérico, observación, método."
+areas_long = {
+    "C": "C = Administrativo",
+    "H": "H = Humanidades y Sociales",
+    "A": "A = Artístico",
+    "S": "S = Ciencias de la Salud",
+    "I": "I = Enseñanzas Técnicas",
+    "D": "D = Defensa y Seguridad",
+    "E": "E = Ciencias Experimentales"
 }
 
-carreras_disp = sorted(df_radar['Carrera'].dropna().unique())
+carreras_disp = sorted(df_mancuerna['Carrera'].dropna().unique())
 if not carreras_disp:
-    st.info("No hay carreras para mostrar en el radar.")
+    st.info("No hay carreras para mostrar en el diagrama de mancuernas.")
 else:
     tabs = st.tabs(carreras_disp)
 
     for tab, carrera_sel in zip(tabs, carreras_disp):
         with tab:
-            sub = df_radar[df_radar['Carrera'] == carrera_sel]
+            sub = df_mancuerna[df_mancuerna['Carrera'] == carrera_sel].copy()
             sub = sub[sub['Categoría'].isin(['Verde', 'Amarillo'])]
 
             if sub.empty or sub['Categoría'].nunique() < 2:
                 st.warning("No hay datos suficientes de Verde y Amarillo en esta carrera.")
                 continue
 
-            prom = sub.groupby('Categoría')[areas].mean().reset_index()
+            prom = sub.groupby('Categoría')[areas].mean()
 
-            fig = px.line_polar(
-                prom.melt(id_vars='Categoría', value_vars=areas, var_name='Área', value_name='Promedio'),
-                r='Promedio',
-                theta='Área',
-                color='Categoría',
-                line_close=True,
-                markers=True,
-                color_discrete_map={'Verde': '#22c55e', 'Amarillo': '#f59e0b'},
-                title=f"Perfil CHASIDE – {carrera_sel}"
+            if 'Verde' not in prom.index or 'Amarillo' not in prom.index:
+                st.warning("Faltan datos de alguna de las dos categorías en esta carrera.")
+                continue
+
+            filas_plot = []
+            for a in areas:
+                valor_amarillo = prom.loc['Amarillo', a]
+                valor_verde = prom.loc['Verde', a]
+                color_brecha = '#dc2626' if valor_amarillo < valor_verde else '#16a34a'
+
+                filas_plot.append({
+                    'Área': areas_long[a],
+                    'Amarillo': valor_amarillo,
+                    'Verde': valor_verde,
+                    'Color': color_brecha,
+                    'Brecha': valor_verde - valor_amarillo
+                })
+
+            df_plot = pd.DataFrame(filas_plot)
+
+            # Ordenar para que se vea mejor de arriba hacia abajo
+            orden_y = list(df_plot['Área'])[::-1]
+
+            fig = px.scatter(
+                title=f"Perfil CHASIDE – {carrera_sel}",
             )
-            fig.update_traces(fill='toself', opacity=0.75)
+
+            # Líneas de mancuerna
+            for _, row in df_plot.iterrows():
+                fig.add_shape(
+                    type='line',
+                    x0=row['Amarillo'],
+                    x1=row['Verde'],
+                    y0=row['Área'],
+                    y1=row['Área'],
+                    line=dict(color=row['Color'], width=4)
+                )
+
+            # Puntos amarillos
+            fig.add_scatter(
+                x=df_plot['Amarillo'],
+                y=df_plot['Área'],
+                mode='markers',
+                name='Perfil incorrecto',
+                marker=dict(
+                    color='#f59e0b',
+                    size=12,
+                    line=dict(
+                        color=[c for c in df_plot['Color']],
+                        width=3
+                    )
+                ),
+                customdata=np.stack(
+                    [
+                        df_plot['Verde'],
+                        df_plot['Brecha']
+                    ],
+                    axis=-1
+                ),
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "Perfil incorrecto: %{x:.2f}<br>"
+                    "Perfil correcto: %{customdata[0]:.2f}<br>"
+                    "Brecha (Verde - Amarillo): %{customdata[1]:.2f}"
+                    "<extra></extra>"
+                )
+            )
+
+            # Puntos verdes
+            fig.add_scatter(
+                x=df_plot['Verde'],
+                y=df_plot['Área'],
+                mode='markers',
+                name='Perfil correcto',
+                marker=dict(
+                    color='#22c55e',
+                    size=12,
+                    line=dict(
+                        color=[c for c in df_plot['Color']],
+                        width=3
+                    )
+                ),
+                customdata=np.stack(
+                    [
+                        df_plot['Amarillo'],
+                        df_plot['Brecha']
+                    ],
+                    axis=-1
+                ),
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "Perfil correcto: %{x:.2f}<br>"
+                    "Perfil incorrecto: %{customdata[0]:.2f}<br>"
+                    "Brecha (Verde - Amarillo): %{customdata[1]:.2f}"
+                    "<extra></extra>"
+                )
+            )
+
+            fig.update_layout(
+                xaxis_title="Promedio CHASIDE",
+                yaxis_title="Dimensión",
+                yaxis=dict(categoryorder='array', categoryarray=orden_y),
+                height=650,
+                legend_title_text="Grupo"
+            )
+
             st.plotly_chart(fig, use_container_width=True)
 
-            prom_w = sub.groupby('Categoría')[areas].mean()
-            diffs = (prom_w.loc['Verde'] - prom_w.loc['Amarillo']).sort_values(ascending=False)
-            top3 = diffs.head(3)
+            # Resumen ejecutivo de brechas
+            df_plot['Brecha_Abs'] = (df_plot['Verde'] - df_plot['Amarillo']).abs()
+            top3 = df_plot.sort_values('Brecha_Abs', ascending=False).head(3)
 
-            st.markdown("**Áreas a reforzar (donde *Amarillo* está más bajo):**")
-            for letra, delta in top3.items():
-                st.markdown(f"- **{letra}** (Δ = {delta:.2f}): {descripciones_chaside[letra]}")
+            st.markdown("**Dimensiones con mayor diferencia entre ambos perfiles:**")
+            for _, row in top3.iterrows():
+                sentido = "por detrás" if row['Amarillo'] < row['Verde'] else "por encima"
+                color_txt = "🔴" if row['Amarillo'] < row['Verde'] else "🟢"
+                st.markdown(
+                    f"- {color_txt} **{row['Área']}**: diferencia de **{row['Brecha_Abs']:.2f}** puntos. "
+                    f"El perfil incorrecto se encuentra **{sentido}** del perfil correcto."
+                )

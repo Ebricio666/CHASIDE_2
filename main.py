@@ -5,12 +5,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 
 # ============================================
 # 📌 CONFIGURACIÓN INICIAL
 # ============================================
 st.set_page_config(layout="wide")
-
 st.title("Diagnóstico Vocacional - Escala CHASIDE")
 
 # ============================================
@@ -44,7 +44,6 @@ df[columnas_items] = df_items
 
 # ============================================
 # 📌 DESVIACIÓN INTRAPERSONA
-#    El 10% inferior = "Respondió siempre igual"
 # ============================================
 df['Desv_Intrapersona'] = df[columnas_items].std(axis=1)
 umbral_intrapersonal = df['Desv_Intrapersona'].quantile(0.10)
@@ -58,24 +57,26 @@ st.caption(
 # ============================================
 # 📌 MAPEO DE ÍTEMS A ÁREAS
 # ============================================
-areas = ['C','H','A','S','I','D','E']
+areas = ['C', 'H', 'A', 'S', 'I', 'D', 'E']
+
 intereses_items = {
-    'C':[1,12,20,53,64,71,78,85,91,98],
-    'H':[9,25,34,41,56,67,74,80,89,95],
-    'A':[3,11,21,28,36,45,50,57,81,96],
-    'S':[8,16,23,33,44,52,62,70,87,92],
-    'I':[6,19,27,38,47,54,60,75,83,97],
-    'D':[5,14,24,31,37,48,58,65,73,84],
-    'E':[17,32,35,42,49,61,68,77,88,93]
+    'C': [1, 12, 20, 53, 64, 71, 78, 85, 91, 98],
+    'H': [9, 25, 34, 41, 56, 67, 74, 80, 89, 95],
+    'A': [3, 11, 21, 28, 36, 45, 50, 57, 81, 96],
+    'S': [8, 16, 23, 33, 44, 52, 62, 70, 87, 92],
+    'I': [6, 19, 27, 38, 47, 54, 60, 75, 83, 97],
+    'D': [5, 14, 24, 31, 37, 48, 58, 65, 73, 84],
+    'E': [17, 32, 35, 42, 49, 61, 68, 77, 88, 93]
 }
+
 aptitudes_items = {
-    'C':[2,15,46,51],
-    'H':[30,63,72,86],
-    'A':[22,39,76,82],
-    'S':[4,29,40,69],
-    'I':[10,26,59,90],
-    'D':[13,18,43,66],
-    'E':[7,55,79,94]
+    'C': [2, 15, 46, 51],
+    'H': [30, 63, 72, 86],
+    'A': [22, 39, 76, 82],
+    'S': [4, 29, 40, 69],
+    'I': [10, 26, 59, 90],
+    'D': [13, 18, 43, 66],
+    'E': [7, 55, 79, 94]
 }
 
 def col_item(num: int) -> str:
@@ -89,11 +90,13 @@ for area in areas:
 # 📌 PONDERACIÓN
 # ============================================
 peso_intereses, peso_aptitudes = 0.8, 0.2
+
 for area in areas:
     df[f'PUNTAJE_COMBINADO_{area}'] = (
-        df[f'INTERES_{area}'] * peso_intereses
-        + df[f'APTITUD_{area}'] * peso_aptitudes
+        df[f'INTERES_{area}'] * peso_intereses +
+        df[f'APTITUD_{area}'] * peso_aptitudes
     )
+    df[f'TOTAL_{area}'] = df[f'INTERES_{area}'] + df[f'APTITUD_{area}']
 
 df['Area_Fuerte_Ponderada'] = df.apply(
     lambda fila: max(areas, key=lambda a: fila[f'PUNTAJE_COMBINADO_{a}']),
@@ -104,16 +107,16 @@ df['Area_Fuerte_Ponderada'] = df.apply(
 # 📌 PERFILES DE CARRERAS
 # ============================================
 perfil_carreras = {
-    'Arquitectura': {'Fuerte': ['A','I','C']},
-    'Contador Público': {'Fuerte': ['C','D']},
-    'Licenciatura en Administración': {'Fuerte': ['C','D']},
-    'Ingeniería Ambiental': {'Fuerte': ['I','C','E']},
-    'Ingeniería Bioquímica': {'Fuerte': ['I','C','E']},
-    'Ingeniería en Gestión Empresarial': {'Fuerte': ['C','D','H']},
-    'Ingeniería Industrial': {'Fuerte': ['C','D','H']},
-    'Ingeniería en Inteligencia Artificial': {'Fuerte': ['I','E']},
-    'Ingeniería Mecatrónica': {'Fuerte': ['I','E']},
-    'Ingeniería en Sistemas Computacionales': {'Fuerte': ['I','E']}
+    'Arquitectura': {'Fuerte': ['A', 'I', 'C']},
+    'Contador Público': {'Fuerte': ['C', 'D']},
+    'Licenciatura en Administración': {'Fuerte': ['C', 'D']},
+    'Ingeniería Ambiental': {'Fuerte': ['I', 'C', 'E']},
+    'Ingeniería Bioquímica': {'Fuerte': ['I', 'C', 'E']},
+    'Ingeniería en Gestión Empresarial': {'Fuerte': ['C', 'D', 'H']},
+    'Ingeniería Industrial': {'Fuerte': ['C', 'D', 'H']},
+    'Ingeniería en Inteligencia Artificial': {'Fuerte': ['I', 'E']},
+    'Ingeniería Mecatrónica': {'Fuerte': ['I', 'E']},
+    'Ingeniería en Sistemas Computacionales': {'Fuerte': ['I', 'E']}
 }
 
 def evaluar(area_chaside, carrera):
@@ -177,14 +180,12 @@ def semaforo(r):
 df['Carrera_Mejor_Perfilada'] = df.apply(carrera_mejor, axis=1)
 df['Diagnóstico Primario Vocacional'] = df.apply(diagnostico, axis=1)
 df['Semáforo Vocacional'] = df.apply(semaforo, axis=1)
-# ============================================
 
 # ============================================
 # 📌 DIAGRAMA DE PASTEL
 # ============================================
 st.subheader("🥧 Diagnóstico general (Pastel)")
 
-# Renombrar categorías para visualización
 mapa_categorias_pastel = {
     'Verde': 'El perfil coincide con la carrera elegida',
     'Amarillo': 'El perfil NO va acorde con la carrera elegida',
@@ -231,7 +232,6 @@ fig = px.pie(
     }
 )
 
-# Solo porcentaje dentro del pastel
 fig.update_traces(
     textposition='inside',
     texttemplate='%{percent:.1%}',
@@ -239,18 +239,20 @@ fig.update_traces(
 )
 
 fig.update_layout(
-    title=f"Transición vocacional desde {carrera_sel}",
-    font=dict(
-        size=14,
-        color="black",   # 👈 texto negro sólido
-        family="Arial"
-    ),
-    height=700
+    legend_title_text="Categoría",
+    legend=dict(
+        orientation="v",
+        y=0.5,
+        yanchor="middle",
+        x=1.02,
+        xanchor="left"
+    )
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
 # ============================================
-# 📊 Barras apiladas por carrera (porcentaje vs cantidad)
+# 📊 Barras apiladas por carrera
 # ============================================
 st.header("📊 Distribución por carrera y categoría")
 
@@ -325,9 +327,6 @@ else:
 st.plotly_chart(fig_stacked, use_container_width=True)
 
 # ============================================
-# 🎻 Diagrama de violín – Verde vs Amarillo
-# ============================================
-# ============================================
 # 📊 Barra vertical de intensidad – 4 niveles
 # ============================================
 st.header("📊 Intensidad del perfil vocacional por carrera")
@@ -340,8 +339,6 @@ st.caption(
 
 df_intensidad = df.copy()
 df_intensidad['Score'] = df_intensidad[[f'PUNTAJE_COMBINADO_{a}' for a in areas]].max(axis=1)
-
-# Solo Verde y Amarillo
 df_intensidad = df_intensidad[df_intensidad['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])].copy()
 
 if df_intensidad.empty:
@@ -354,13 +351,9 @@ else:
         amar = grupo[grupo['Semáforo Vocacional'] == 'Amarillo'].copy()
         ver = grupo[grupo['Semáforo Vocacional'] == 'Verde'].copy()
 
-        # -------------------------
-        # Amarillo → 2 niveles
-        # -------------------------
         if len(amar) > 0:
             amar = amar.sort_values('Score', ascending=True).copy()
             amar['rank_pct'] = (np.arange(len(amar)) + 1) / len(amar)
-
             amar['Nivel_Intensidad'] = np.where(
                 amar['rank_pct'] <= 0.25,
                 'Sin perfil',
@@ -368,13 +361,9 @@ else:
             )
             grupo.loc[amar.index, 'Nivel_Intensidad'] = amar['Nivel_Intensidad']
 
-        # -------------------------
-        # Verde → 2 niveles
-        # -------------------------
         if len(ver) > 0:
             ver = ver.sort_values('Score', ascending=True).copy()
             ver['rank_pct'] = (np.arange(len(ver)) + 1) / len(ver)
-
             ver['Nivel_Intensidad'] = np.where(
                 ver['rank_pct'] > 0.75,
                 'Jóven promesa',
@@ -399,13 +388,12 @@ else:
     ]
 
     colores_niveles = {
-        'Sin perfil': '#dc2626',             # rojo
-        'Perfil en riesgo': '#f59e0b',       # amarillo/naranja
-        'Perfil en transición': '#84cc16',   # verde amarillento
-        'Jóven promesa': '#16a34a'           # verde fuerte
+        'Sin perfil': '#dc2626',
+        'Perfil en riesgo': '#f59e0b',
+        'Perfil en transición': '#84cc16',
+        'Jóven promesa': '#16a34a'
     }
 
-    # Resumen por carrera y nivel
     resumen_intensidad = (
         df_intensidad
         .groupby([columna_carrera, 'Nivel_Intensidad'], dropna=False)
@@ -477,132 +465,9 @@ else:
 - **Perfil en transición**: estudiantes que sí muestran congruencia con la carrera, pero aún sin ubicarse en los niveles más altos del grupo verde.  
 - **Jóven promesa**: estudiantes en el cuartil superior del grupo verde, con el mejor ajuste vocacional relativo dentro de su carrera.  
 """)
-# ============================================
-# 📊 Barras CHASIDE por área (Verde vs Amarillo)
-# ============================================
-st.header("📊 Áreas prioritarias CHASIDE (Verde vs Amarillo)")
-
-st.caption(
-    "Comparación del perfil promedio entre estudiantes cuyo perfil coincide con la carrera (Verde) "
-    "y aquellos cuyo perfil no es acorde (Amarillo). "
-    "Las áreas se ordenan por brecha, facilitando la identificación de prioridades de intervención."
-)
-
-# --------------------------------------------
-# Preparar datos
-# --------------------------------------------
-df_bar = df.copy()
-
-for a in areas:
-    df_bar[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
-
-df_bar = df_bar[df_bar['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])].copy()
-
-if df_bar.empty:
-    st.info("No hay datos suficientes de Verde y Amarillo.")
-else:
-
-    carreras_disp = sorted(df_bar[columna_carrera].dropna().unique())
-    carrera_sel = st.selectbox("Selecciona una carrera:", carreras_disp)
-
-    sub = df_bar[df_bar[columna_carrera] == carrera_sel]
-
-    if sub.empty or sub['Semáforo Vocacional'].nunique() < 2:
-        st.warning("No hay suficientes datos para comparar en esta carrera.")
-    else:
-
-        # --------------------------------------------
-        # Promedios por grupo
-        # --------------------------------------------
-        prom = sub.groupby('Semáforo Vocacional')[areas].mean()
-
-        # --------------------------------------------
-        # Calcular brecha (Verde - Amarillo)
-        # --------------------------------------------
-        brechas = (prom.loc['Verde'] - prom.loc['Amarillo']).sort_values(ascending=False)
-
-        # --------------------------------------------
-        # DataFrame para gráfico
-        # --------------------------------------------
-        df_plot = pd.DataFrame({
-            'Área': brechas.index,
-            'Verde': prom.loc['Verde'][brechas.index],
-            'Amarillo': prom.loc['Amarillo'][brechas.index],
-            'Brecha': brechas.values
-        })
-
-        # nombres largos
-        areas_long = {
-            "C": "Administrativo",
-            "H": "Humanidades y Sociales",
-            "A": "Artístico",
-            "S": "Ciencias de la Salud",
-            "I": "Enseñanzas Técnicas",
-            "D": "Defensa y Seguridad",
-            "E": "Ciencias Experimentales"
-        }
-
-        df_plot['Área'] = df_plot['Área'].map(areas_long)
-
-        # --------------------------------------------
-        # Formato largo para stacked
-        # --------------------------------------------
-        df_long = df_plot.melt(
-            id_vars='Área',
-            value_vars=['Verde', 'Amarillo'],
-            var_name='Perfil',
-            value_name='Valor'
-        )
-
-        # --------------------------------------------
-        # GRÁFICA
-        # --------------------------------------------
-        fig = px.bar(
-            df_long,
-            y='Área',
-            x='Valor',
-            color='Perfil',
-            barmode='stack',
-            orientation='h',
-            color_discrete_map={
-                'Verde': '#22c55e',
-                'Amarillo': '#f59e0b'
-            },
-            title=f"Perfil CHASIDE por área – {carrera_sel}"
-        )
-
-        fig.update_layout(
-            xaxis_title="Nivel promedio CHASIDE",
-            yaxis_title="Área",
-            height=600
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        # --------------------------------------------
-        # INTERPRETACIÓN AUTOMÁTICA
-        # --------------------------------------------
-        st.markdown("### 🔎 Lectura del gráfico")
-
-        top3 = df_plot.head(3)
-
-        st.markdown("**Áreas con mayor diferencia (prioridad de intervención):**")
-        for _, row in top3.iterrows():
-            st.markdown(
-                f"- **{row['Área']}** → Diferencia de {row['Brecha']:.2f} puntos "
-                f"(Verde: {row['Verde']:.2f} vs Amarillo: {row['Amarillo']:.2f})"
-            )
-
-import plotly.graph_objects as go
-
-import plotly.graph_objects as go
-import plotly.graph_objects as go
-import plotly.express as px
-import numpy as np
 
 # ============================================
 # 🌊 Sankey por carrera seleccionada
-#    Solo perfiles únicos + color por destino
 # ============================================
 st.header("🌊 Transición vocacional por carrera")
 
@@ -614,7 +479,6 @@ st.caption(
 
 df_sankey = df.copy()
 
-# Excluir casos no útiles
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].isin([
         'Información no confiable',
@@ -622,14 +486,10 @@ df_sankey = df_sankey[
     ])
 ].copy()
 
-# Limpiar textos
 df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
 df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].astype(str).str.strip()
 
-# -------------------------------------------------
-# QUEDARSE SOLO CON PERFILES ÚNICOS
-# (sin comas = una sola carrera sugerida)
-# -------------------------------------------------
+# solo perfiles únicos
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)
 ].copy()
@@ -645,9 +505,6 @@ else:
     if sub.empty:
         st.warning("No hay estudiantes con perfil único para esta carrera.")
     else:
-        # --------------------------------------------
-        # Conteos por destino
-        # --------------------------------------------
         destinos = (
             sub.groupby('Carrera_Mejor_Perfilada')
             .size()
@@ -657,25 +514,15 @@ else:
 
         n_inicial = len(sub)
 
-        # --------------------------------------------
-        # Colores por carrera destino
-        # --------------------------------------------
-        carreras_unicas_destino = destinos['Carrera_Mejor_Perfilada'].tolist()
-
-        # Colores más sólidos para evitar efecto "lavado"
         palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
+        carreras_unicas_destino = destinos['Carrera_Mejor_Perfilada'].tolist()
 
         color_map_destino = {
             carrera: palette[i % len(palette)]
             for i, carrera in enumerate(carreras_unicas_destino)
         }
-
-        # Si permanece en la misma carrera, verde
         color_map_destino[carrera_sel] = '#22c55e'
 
-        # --------------------------------------------
-        # Etiquetas de nodos
-        # --------------------------------------------
         label_origen = [f"{carrera_sel}<br>Inicial: {n_inicial}"]
         label_destinos = [
             f"{row['Carrera_Mejor_Perfilada']}<br>Final: {row['N']}"
@@ -683,43 +530,35 @@ else:
         ]
         labels = label_origen + label_destinos
 
-        # --------------------------------------------
-        # Índices
-        # --------------------------------------------
         source = [0] * len(destinos)
         target = list(range(1, len(destinos) + 1))
         value = destinos['N'].tolist()
 
-        # Hover
+        porcentaje_destino = (destinos['N'] / n_inicial * 100).round(1)
+
         customdata = np.stack(
             [
                 [carrera_sel] * len(destinos),
                 destinos['Carrera_Mejor_Perfilada'],
-                destinos['N']
+                destinos['N'],
+                porcentaje_destino
             ],
             axis=-1
         )
 
-        # --------------------------------------------
-        # Colores de nodos
-        # --------------------------------------------
         node_colors = ['#60a5fa'] + [
             color_map_destino[dest]
             for dest in destinos['Carrera_Mejor_Perfilada']
         ]
 
-        # --------------------------------------------
-        # Colores de enlaces
-        # --------------------------------------------
         link_colors = [
             color_map_destino[dest]
             for dest in destinos['Carrera_Mejor_Perfilada']
         ]
 
-        # --------------------------------------------
-        # Figura Sankey
-        # --------------------------------------------
-        fig = go.Figure(data=[go.Sankey(
+        title_text = f"Transición vocacional desde {carrera_sel}"
+
+        fig_sankey = go.Figure(data=[go.Sankey(
             arrangement="snap",
             node=dict(
                 pad=20,
@@ -740,13 +579,14 @@ else:
                 hovertemplate=(
                     "Carrera elegida: %{customdata[0]}<br>"
                     "Carrera sugerida: %{customdata[1]}<br>"
-                    "Estudiantes: %{customdata[2]}<extra></extra>"
+                    "Estudiantes: %{customdata[2]}<br>"
+                    "Porcentaje: %{customdata[3]}%<extra></extra>"
                 )
             )
         )])
 
-        fig.update_layout(
-            title=f"Transición vocacional desde {carrera_sel}",
+        fig_sankey.update_layout(
+            title=title_text,
             font=dict(
                 size=14,
                 color="black",
@@ -757,20 +597,40 @@ else:
             height=700
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig_sankey, use_container_width=True)
 
-        # --------------------------------------------
-        # Resumen numérico
-        # --------------------------------------------
+        # KPIs
+        mismos = int(destinos.loc[destinos['Carrera_Mejor_Perfilada'] == carrera_sel, 'N'].sum()) if carrera_sel in destinos['Carrera_Mejor_Perfilada'].values else 0
+        migran = n_inicial - mismos
+        pct_mismos = (mismos / n_inicial * 100) if n_inicial else 0
+        pct_migran = (migran / n_inicial * 100) if n_inicial else 0
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total con perfil único", n_inicial)
+        with col2:
+            st.metric("Se mantienen", f"{mismos} ({pct_mismos:.1f}%)")
+        with col3:
+            st.metric("Migrarían", f"{migran} ({pct_migran:.1f}%)")
+
         st.markdown("### Resumen numérico")
         for _, row in destinos.iterrows():
+            pct = row['N'] / n_inicial * 100 if n_inicial else 0
             st.markdown(
-                f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: {row['N']} estudiantes"
+                f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: "
+                f"{row['N']} estudiantes ({pct:.1f}%)"
+            )
+
+        # Detectar fuga
+        if migran > mismos:
+            st.warning(
+                f"⚠️ En **{carrera_sel}** hay mayor tendencia a migrar ({migran}) que a permanecer ({mismos})."
+            )
+        else:
+            st.success(
+                f"✅ En **{carrera_sel}** predomina la permanencia vocacional ({mismos}) sobre la migración ({migran})."
             )
 
         st.caption(
             f"Total analizado en {carrera_sel}: {n_inicial} estudiantes con carrera sugerida única."
         )
-import plotly.graph_objects as go
-import plotly.express as px
-

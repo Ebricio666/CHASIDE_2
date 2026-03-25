@@ -177,13 +177,44 @@ def semaforo(r):
 df['Carrera_Mejor_Perfilada'] = df.apply(carrera_mejor, axis=1)
 df['Diagnóstico Primario Vocacional'] = df.apply(diagnostico, axis=1)
 df['Semáforo Vocacional'] = df.apply(semaforo, axis=1)
-
 # ============================================
 # 📌 DIAGRAMA DE PASTEL
 # ============================================
 st.subheader("🥧 Diagnóstico general (Pastel)")
-resumen = df['Semáforo Vocacional'].value_counts().reset_index()
+
+# Renombrar categorías para visualización
+mapa_categorias_pastel = {
+    'Verde': 'El perfil coincide con la carrera elegida',
+    'Amarillo': 'El perfil NO va acorde con la carrera elegida',
+    'Sin sugerencia': 'No se observa un perfil prioritario',
+    'Respondió siempre igual': 'Respondió siempre igual',
+    'Rojo': 'No se observa un perfil prioritario'
+}
+
+df_pastel = df.copy()
+df_pastel['Categoría_Pastel'] = df_pastel['Semáforo Vocacional'].replace(mapa_categorias_pastel)
+
+# Si existieran simultáneamente "Rojo" y "Sin sugerencia", ambos se fusionan
+resumen = (
+    df_pastel['Categoría_Pastel']
+    .value_counts()
+    .reset_index()
+)
 resumen.columns = ['Categoría', 'N']
+
+orden_pastel = [
+    'El perfil coincide con la carrera elegida',
+    'El perfil NO va acorde con la carrera elegida',
+    'No se observa un perfil prioritario',
+    'Respondió siempre igual'
+]
+
+resumen['Categoría'] = pd.Categorical(
+    resumen['Categoría'],
+    categories=orden_pastel,
+    ordered=True
+)
+resumen = resumen.sort_values('Categoría')
 
 fig = px.pie(
     resumen,
@@ -192,19 +223,32 @@ fig = px.pie(
     hole=0.35,
     color='Categoría',
     color_discrete_map={
-        'Verde': '#22c55e',
-        'Amarillo': '#f59e0b',
-        'Rojo': '#94a3b8',
-        'Respondió siempre igual': '#ef4444',
-        'Sin sugerencia': '#6b7280'
+        'El perfil coincide con la carrera elegida': '#22c55e',
+        'El perfil NO va acorde con la carrera elegida': '#f59e0b',
+        'No se observa un perfil prioritario': '#6b7280',
+        'Respondió siempre igual': '#ef4444'
     }
 )
-fig.update_traces(
-    textposition='inside',
-    texttemplate='%{label}<br>%{percent:.1%} (%{value})'
-)
-st.plotly_chart(fig, use_container_width=True)
 
+# Quitar texto dentro de las porciones
+fig.update_traces(
+    textinfo='none',
+    hovertemplate='<b>%{label}</b><br>Porcentaje: %{percent}<br>N: %{value}<extra></extra>'
+)
+
+# Leyenda lateral
+fig.update_layout(
+    legend_title_text="Categoría",
+    legend=dict(
+        orientation="v",
+        y=0.5,
+        yanchor="middle",
+        x=1.02,
+        xanchor="left"
+    )
+)
+
+st.plotly_chart(fig, use_container_width=True)
 # ============================================
 # 📊 Barras apiladas por carrera (porcentaje vs cantidad)
 # ============================================

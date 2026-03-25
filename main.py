@@ -596,19 +596,21 @@ else:
 
 import plotly.graph_objects as go
 
+import plotly.graph_objects as go
+
 # ============================================
-# 🌊 Diagrama de Sankey: carrera elegida vs carrera sugerida
+# 🌊 Sankey por carrera seleccionada
 # ============================================
-st.header("🌊 Migración potencial entre carreras según CHASIDE")
+st.header("🌊 Transición vocacional por carrera")
 
 st.caption(
-    "El diagrama muestra cómo podrían redistribuirse los estudiantes desde la carrera elegida "
-    "hacia la carrera con mejor ajuste al perfil CHASIDE."
+    "Seleccione una carrera para visualizar cómo se redistribuyen sus estudiantes "
+    "hacia la misma carrera u otras opciones con mejor ajuste según CHASIDE."
 )
 
 df_sankey = df.copy()
 
-# Tomar solo casos válidos para sugerencia de migración
+# Excluir respuestas no útiles para sugerencia
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].isin([
         'Información no confiable',
@@ -616,94 +618,91 @@ df_sankey = df_sankey[
     ])
 ].copy()
 
-# Convertir a string y limpiar
 df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
 df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].astype(str).str.strip()
 
 if df_sankey.empty:
     st.info("No hay datos suficientes para construir el Sankey.")
 else:
-    # --------------------------------------------
-    # Conteos iniciales y finales
-    # --------------------------------------------
-    iniciales = df_sankey[columna_carrera].value_counts().to_dict()
-    finales = df_sankey['Carrera_Mejor_Perfilada'].value_counts().to_dict()
+    carreras_disp = sorted(df_sankey[columna_carrera].unique())
+    carrera_sel = st.selectbox("Seleccione la carrera de origen:", carreras_disp)
 
-    carreras_origen = sorted(df_sankey[columna_carrera].unique())
-    carreras_destino = sorted(df_sankey['Carrera_Mejor_Perfilada'].unique())
+    sub = df_sankey[df_sankey[columna_carrera] == carrera_sel].copy()
 
-    # Etiquetas con n inicial y final
-    labels_origen = [
-        f"{c}<br>Inicial: {iniciales.get(c, 0)}"
-        for c in carreras_origen
-    ]
-    labels_destino = [
-        f"{c}<br>Final: {finales.get(c, 0)}"
-        for c in carreras_destino
-    ]
-
-    labels = labels_origen + labels_destino
-
-    # Índices de nodos
-    source_map = {c: i for i, c in enumerate(carreras_origen)}
-    target_map = {c: i + len(carreras_origen) for i, c in enumerate(carreras_destino)}
-
-    # --------------------------------------------
-    # Flujos
-    # --------------------------------------------
-    flujos = (
-        df_sankey
-        .groupby([columna_carrera, 'Carrera_Mejor_Perfilada'])
-        .size()
-        .reset_index(name='N')
-    )
-
-    source = flujos[columna_carrera].map(source_map).tolist()
-    target = flujos['Carrera_Mejor_Perfilada'].map(target_map).tolist()
-    value = flujos['N'].tolist()
-
-    # Hover personalizado
-    customdata = np.stack(
-        [
-            flujos[columna_carrera],
-            flujos['Carrera_Mejor_Perfilada'],
-            flujos['N']
-        ],
-        axis=-1
-    )
-
-    # Colores base por nodo
-    node_colors = (
-        ['#60a5fa'] * len(carreras_origen) +   # azul lado izquierdo
-        ['#34d399'] * len(carreras_destino)    # verde lado derecho
-    )
-
-    fig = go.Figure(data=[go.Sankey(
-        arrangement="snap",
-        node=dict(
-            pad=18,
-            thickness=20,
-            line=dict(color="gray", width=0.5),
-            label=labels,
-            color=node_colors
-        ),
-        link=dict(
-            source=source,
-            target=target,
-            value=value,
-            customdata=customdata,
-            hovertemplate=(
-                "Carrera elegida: %{customdata[0]}<br>"
-                "Carrera sugerida: %{customdata[1]}<br>"
-                "Estudiantes: %{customdata[2]}<extra></extra>"
-            )
+    if sub.empty:
+        st.warning("No hay estudiantes para esta carrera.")
+    else:
+        # Conteos por destino
+        destinos = (
+            sub.groupby('Carrera_Mejor_Perfilada')
+            .size()
+            .reset_index(name='N')
+            .sort_values('N', ascending=False)
         )
-    )])
 
-    fig.update_layout(
-        title="Migración potencial entre carreras",
-        font=dict(size=13),
-        height=700
-    )
+        n_inicial = len(sub)
 
-    st.plotly_chart(fig, use_container_width=True)
+        # Etiquetas
+        label_origen = [f"{carrera_sel}<br>Inicial: {n_inicial}"]
+        label_destinos = [
+            f"{row['Carrera_Mejor_Perfilada']}<br>Final: {row['N']}"
+            for _, row in destinos.iterrows()
+        ]
+        labels = label_origen + label_destinos
+
+        # Índices
+        source = [0] * len(destinos)
+        target = list(range(1, len(destinos) + 1))
+        value = destinos['N'].tolist()
+
+        # Hover
+        customdata = np.stack(
+            [
+                [carrera_sel] * len(destinos),
+                destinos['Carrera_Mejor_Perfilada'],
+                destinos['N']
+            ],
+            axis=-1
+        )
+
+        # Color especial si permanece en la misma carrera
+        link_colors = [
+            '#22c55e' if dest == carrera_sel else '#94a3b8'
+            for dest in destinos['Carrera_Mejor_Perfilada']
+        ]
+
+        fig = go.Figure(data=[go.Sankey(
+            arrangement="snap",
+            node=dict(
+                pad=20,
+                thickness=22,
+                line=dict(color="gray", width=0.5),
+                label=labels,
+                color=['#60a5fa'] + ['#34d399' if d == carrera_sel else '#f59e0b' for d in destinos['Carrera_Mejor_Perfilada']]
+            ),
+            link=dict(
+                source=source,
+                target=target,
+                value=value,
+                color=link_colors,
+                customdata=customdata,
+                hovertemplate=(
+                    "Carrera elegida: %{customdata[0]}<br>"
+                    "Carrera sugerida: %{customdata[1]}<br>"
+                    "Estudiantes: %{customdata[2]}<extra></extra>"
+                )
+            )
+        )])
+
+        fig.update_layout(
+            title=f"Transición vocacional desde {carrera_sel}",
+            font=dict(size=13),
+            height=650
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Resumen numérico debajo
+        st.markdown("### Resumen numérico")
+        for _, row in destinos.iterrows():
+            st.markdown(f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: {row['N']} estudiantes")

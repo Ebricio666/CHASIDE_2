@@ -239,14 +239,13 @@ fig.update_traces(
 )
 
 fig.update_layout(
-    legend_title_text="Categoría",
-    legend=dict(
-        orientation="v",
-        y=0.5,
-        yanchor="middle",
-        x=1.02,
-        xanchor="left"
-    )
+    title=f"Transición vocacional desde {carrera_sel}",
+    font=dict(
+        size=14,
+        color="black",   # 👈 texto negro sólido
+        family="Arial"
+    ),
+    height=700
 )
 
 st.plotly_chart(fig, use_container_width=True)

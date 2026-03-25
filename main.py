@@ -598,19 +598,24 @@ import plotly.graph_objects as go
 
 import plotly.graph_objects as go
 
+import plotly.graph_objects as go
+import plotly.express as px
+
 # ============================================
 # 🌊 Sankey por carrera seleccionada
+#    Solo perfiles únicos + color por destino
 # ============================================
 st.header("🌊 Transición vocacional por carrera")
 
 st.caption(
     "Seleccione una carrera para visualizar cómo se redistribuyen sus estudiantes "
-    "hacia la misma carrera u otras opciones con mejor ajuste según CHASIDE."
+    "hacia la misma carrera u otras opciones con mejor ajuste según CHASIDE. "
+    "Solo se consideran estudiantes con una carrera sugerida única."
 )
 
 df_sankey = df.copy()
 
-# Excluir respuestas no útiles para sugerencia
+# Excluir casos no útiles
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].isin([
         'Información no confiable',
@@ -618,11 +623,18 @@ df_sankey = df_sankey[
     ])
 ].copy()
 
+# Limpiar textos
 df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
 df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].astype(str).str.strip()
 
+# -------------------------------------------------
+# QUEDARSE SOLO CON PERFILES ÚNICOS
+# (sin comas = una sola carrera sugerida)
+# -------------------------------------------------
+df_sankey = df_sankey[~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)].copy()
+
 if df_sankey.empty:
-    st.info("No hay datos suficientes para construir el Sankey.")
+    st.info("No hay datos suficientes para construir el Sankey con perfiles únicos.")
 else:
     carreras_disp = sorted(df_sankey[columna_carrera].unique())
     carrera_sel = st.selectbox("Seleccione la carrera de origen:", carreras_disp)
@@ -630,9 +642,11 @@ else:
     sub = df_sankey[df_sankey[columna_carrera] == carrera_sel].copy()
 
     if sub.empty:
-        st.warning("No hay estudiantes para esta carrera.")
+        st.warning("No hay estudiantes con perfil único para esta carrera.")
     else:
+        # --------------------------------------------
         # Conteos por destino
+        # --------------------------------------------
         destinos = (
             sub.groupby('Carrera_Mejor_Perfilada')
             .size()
@@ -642,7 +656,22 @@ else:
 
         n_inicial = len(sub)
 
-        # Etiquetas
+        # --------------------------------------------
+        # Colores por carrera destino
+        # --------------------------------------------
+        carreras_unicas_destino = destinos['Carrera_Mejor_Perfilada'].tolist()
+        palette = px.colors.qualitative.Set2 + px.colors.qualitative.Pastel + px.colors.qualitative.Safe
+        color_map_destino = {
+            carrera: palette[i % len(palette)]
+            for i, carrera in enumerate(carreras_unicas_destino)
+        }
+
+        # si permanece en la misma carrera, verde
+        color_map_destino[carrera_sel] = '#22c55e'
+
+        # --------------------------------------------
+        # Etiquetas de nodos
+        # --------------------------------------------
         label_origen = [f"{carrera_sel}<br>Inicial: {n_inicial}"]
         label_destinos = [
             f"{row['Carrera_Mejor_Perfilada']}<br>Final: {row['N']}"
@@ -665,9 +694,15 @@ else:
             axis=-1
         )
 
-        # Color especial si permanece en la misma carrera
+        # Colores de nodos
+        node_colors = ['#60a5fa'] + [
+            color_map_destino[dest]
+            for dest in destinos['Carrera_Mejor_Perfilada']
+        ]
+
+        # Colores de enlaces
         link_colors = [
-            '#22c55e' if dest == carrera_sel else '#94a3b8'
+            color_map_destino[dest]
             for dest in destinos['Carrera_Mejor_Perfilada']
         ]
 
@@ -678,7 +713,7 @@ else:
                 thickness=22,
                 line=dict(color="gray", width=0.5),
                 label=labels,
-                color=['#60a5fa'] + ['#34d399' if d == carrera_sel else '#f59e0b' for d in destinos['Carrera_Mejor_Perfilada']]
+                color=node_colors
             ),
             link=dict(
                 source=source,
@@ -697,12 +732,20 @@ else:
         fig.update_layout(
             title=f"Transición vocacional desde {carrera_sel}",
             font=dict(size=13),
-            height=650
+            height=700
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Resumen numérico debajo
+        # --------------------------------------------
+        # Resumen numérico
+        # --------------------------------------------
         st.markdown("### Resumen numérico")
         for _, row in destinos.iterrows():
-            st.markdown(f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: {row['N']} estudiantes")
+            st.markdown(
+                f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: {row['N']} estudiantes"
+            )
+
+        st.caption(
+            f"Total analizado en {carrera_sel}: {n_inicial} estudiantes con carrera sugerida única."
+        )

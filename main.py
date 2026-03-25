@@ -480,21 +480,23 @@ else:
 """)
 # ============================================
 # 📍 Diagrama de mancuernas CHASIDE por carrera
-#    Carrera en general vs perfil esperado
+#    Perfil en riesgo vs Perfil en transición
 # ============================================
-st.header("📍 Perfil general de la carrera vs perfil esperado (Mancuernas)")
+st.header("📍 Comparación entre perfil en riesgo y perfil en transición")
 
 st.caption(
-    "Cada línea compara el perfil promedio de toda la carrera frente al perfil esperado de la carrera "
-    "(estimado a partir del grupo con perfil congruente). "
-    "Rojo indica que la carrera está por detrás del perfil esperado; verde indica alineación o superioridad."
+    "Cada línea compara el promedio del grupo en riesgo frente al grupo en transición "
+    "en cada dimensión CHASIDE. "
+    "Rojo indica que el grupo en riesgo está por detrás del grupo en transición; "
+    "verde indica que lo iguala o supera."
 )
 
-df_mancuerna = df.copy()
+# Usamos la base con niveles de intensidad ya construidos
+df_mancuerna = df_intensidad.copy()
+
 for a in areas:
     df_mancuerna[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
 
-df_mancuerna['Categoría'] = df['Semáforo Vocacional']
 df_mancuerna['Carrera'] = df[columna_carrera]
 
 areas_long = {
@@ -517,41 +519,31 @@ else:
     for tab, carrera_sel in zip(tabs, carreras_disp):
         with tab:
             sub = df_mancuerna[df_mancuerna['Carrera'] == carrera_sel].copy()
+            sub = sub[sub['Nivel_Intensidad'].isin(['Perfil en riesgo', 'Perfil en transición'])]
 
-            if sub.empty:
-                st.warning("No hay datos en esta carrera.")
+            if sub.empty or sub['Nivel_Intensidad'].nunique() < 2:
+                st.warning("No hay datos suficientes de perfil en riesgo y perfil en transición en esta carrera.")
                 continue
 
-            # -----------------------------
-            # Perfil general de la carrera
-            # -----------------------------
-            prom_carrera = sub[areas].mean()
+            prom = sub.groupby('Nivel_Intensidad')[areas].mean()
 
-            # -----------------------------
-            # Perfil esperado de la carrera
-            # = promedio del grupo Verde
-            # -----------------------------
-            sub_verde = sub[sub['Categoría'] == 'Verde'].copy()
-
-            if sub_verde.empty:
-                st.warning("No hay suficientes estudiantes con perfil congruente (Verde) para estimar el perfil esperado.")
+            if 'Perfil en riesgo' not in prom.index or 'Perfil en transición' not in prom.index:
+                st.warning("Faltan datos de alguno de los dos perfiles en esta carrera.")
                 continue
-
-            prom_esperado = sub_verde[areas].mean()
 
             filas_plot = []
             for a in areas:
-                val_carrera = prom_carrera[a]
-                val_esperado = prom_esperado[a]
+                val_riesgo = prom.loc['Perfil en riesgo', a]
+                val_transicion = prom.loc['Perfil en transición', a]
 
-                color_linea = '#dc2626' if val_carrera < val_esperado else '#16a34a'
+                color_linea = '#dc2626' if val_riesgo < val_transicion else '#16a34a'
 
                 filas_plot.append({
                     'Área': areas_long[a],
-                    'Carrera': val_carrera,
-                    'Esperado': val_esperado,
+                    'Riesgo': val_riesgo,
+                    'Transicion': val_transicion,
                     'Color': color_linea,
-                    'Brecha': val_esperado - val_carrera
+                    'Brecha': val_transicion - val_riesgo
                 })
 
             df_plot = pd.DataFrame(filas_plot)
@@ -559,64 +551,64 @@ else:
 
             fig = px.scatter(title=f"Perfil CHASIDE – {carrera_sel}")
 
-            # Líneas de mancuerna
+            # Líneas
             for _, row in df_plot.iterrows():
                 fig.add_shape(
                     type='line',
-                    x0=row['Carrera'],
-                    x1=row['Esperado'],
+                    x0=row['Riesgo'],
+                    x1=row['Transicion'],
                     y0=row['Área'],
                     y1=row['Área'],
                     line=dict(color=row['Color'], width=4)
                 )
 
-            # 🔴 Perfil general de la carrera
+            # 🔴 Perfil en riesgo
             fig.add_scatter(
-                x=df_plot['Carrera'],
+                x=df_plot['Riesgo'],
                 y=df_plot['Área'],
                 mode='markers',
-                name='Perfil general de la carrera',
+                name='Perfil en riesgo',
                 marker=dict(
                     color='#dc2626',
                     size=12
                 ),
                 customdata=np.stack(
                     [
-                        df_plot['Esperado'],
+                        df_plot['Transicion'],
                         df_plot['Brecha']
                     ],
                     axis=-1
                 ),
                 hovertemplate=(
                     "<b>%{y}</b><br>"
-                    "Perfil general de la carrera: %{x:.2f}<br>"
-                    "Perfil esperado: %{customdata[0]:.2f}<br>"
+                    "Perfil en riesgo: %{x:.2f}<br>"
+                    "Perfil en transición: %{customdata[0]:.2f}<br>"
                     "Brecha: %{customdata[1]:.2f}"
                     "<extra></extra>"
                 )
             )
 
-            # 🟢 Perfil esperado de la carrera
+            # 🟢 Perfil en transición
             fig.add_scatter(
-                x=df_plot['Esperado'],
+                x=df_plot['Transicion'],
                 y=df_plot['Área'],
                 mode='markers',
-                name='Perfil esperado de la carrera',
+                name='Perfil en transición',
                 marker=dict(
                     color='#16a34a',
                     size=12
                 ),
                 customdata=np.stack(
                     [
-                        df_plot['Carrera'],
+                        df_plot['Riesgo'],
                         df_plot['Brecha']
                     ],
                     axis=-1
                 ),
                 hovertemplate=(
                     "<b>%{y}</b><br>"
-                    "Perfil esperado de la carrera: %{x:.2f}<br>"
-                    "Perfil general de la carrera: %{customdata[0]:.2f}<br>"
+                    "Perfil en transición: %{x:.2f}<br>"
+                    "Perfil en riesgo: %{customdata[0]:.2f}<br>"
                     "Brecha: %{customdata[1]:.2f}"
                     "<extra></extra>"
                 )
@@ -631,13 +623,3 @@ else:
             )
 
             st.plotly_chart(fig, use_container_width=True)
-
-            # Resumen breve
-            st.markdown("**Lectura rápida:**")
-            n_rojas = (df_plot['Carrera'] < df_plot['Esperado']).sum()
-            n_verdes = (df_plot['Carrera'] >= df_plot['Esperado']).sum()
-
-            st.markdown(
-                f"- Dimensiones por debajo del perfil esperado: **{n_rojas}**  \n"
-                f"- Dimensiones alineadas o por encima del perfil esperado: **{n_verdes}**"
-            )

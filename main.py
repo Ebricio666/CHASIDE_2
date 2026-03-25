@@ -484,10 +484,8 @@ else:
 st.header("📍 Comparación de perfil vocacional por carrera (Mancuernas)")
 
 st.caption(
-    "Cada línea compara el promedio del grupo con perfil incorrecto (amarillo) frente al grupo "
-    "con perfil correcto (verde) en cada dimensión CHASIDE. "
-    "Rojo indica que el grupo amarillo está por detrás del verde; "
-    "verde indica que el amarillo iguala o supera al verde."
+    "Cada línea compara el perfil del grupo frente al perfil esperado de la carrera en cada dimensión CHASIDE. "
+    "Rojo indica que el grupo está por detrás del perfil esperado; verde indica alineación o superioridad."
 )
 
 df_mancuerna = df.copy()
@@ -498,149 +496,122 @@ df_mancuerna['Categoría'] = df['Semáforo Vocacional']
 df_mancuerna['Carrera'] = df[columna_carrera]
 
 areas_long = {
-    "C": "C = Administrativo",
-    "H": "H = Humanidades y Sociales",
-    "A": "A = Artístico",
-    "S": "S = Ciencias de la Salud",
-    "I": "I = Enseñanzas Técnicas",
-    "D": "D = Defensa y Seguridad",
-    "E": "E = Ciencias Experimentales"
+    "C": "Administrativo",
+    "H": "Humanidades y Sociales",
+    "A": "Artístico",
+    "S": "Ciencias de la Salud",
+    "I": "Enseñanzas Técnicas",
+    "D": "Defensa y Seguridad",
+    "E": "Ciencias Experimentales"
 }
 
 carreras_disp = sorted(df_mancuerna['Carrera'].dropna().unique())
+
 if not carreras_disp:
-    st.info("No hay carreras para mostrar en el diagrama de mancuernas.")
+    st.info("No hay carreras para mostrar en el diagrama.")
 else:
     tabs = st.tabs(carreras_disp)
 
     for tab, carrera_sel in zip(tabs, carreras_disp):
         with tab:
-            sub = df_mancuerna[df_mancuerna['Carrera'] == carrera_sel].copy()
+            sub = df_mancuerna[df_mancuerna['Carrera'] == carrera_sel]
             sub = sub[sub['Categoría'].isin(['Verde', 'Amarillo'])]
 
             if sub.empty or sub['Categoría'].nunique() < 2:
-                st.warning("No hay datos suficientes de Verde y Amarillo en esta carrera.")
+                st.warning("No hay datos suficientes en esta carrera.")
                 continue
 
             prom = sub.groupby('Categoría')[areas].mean()
 
-            if 'Verde' not in prom.index or 'Amarillo' not in prom.index:
-                st.warning("Faltan datos de alguna de las dos categorías en esta carrera.")
-                continue
-
             filas_plot = []
             for a in areas:
-                valor_amarillo = prom.loc['Amarillo', a]
-                valor_verde = prom.loc['Verde', a]
-                color_brecha = '#dc2626' if valor_amarillo < valor_verde else '#16a34a'
+                val_grupo = prom.loc['Amarillo', a]
+                val_esperado = prom.loc['Verde', a]
+
+                color_linea = '#dc2626' if val_grupo < val_esperado else '#16a34a'
 
                 filas_plot.append({
                     'Área': areas_long[a],
-                    'Amarillo': valor_amarillo,
-                    'Verde': valor_verde,
-                    'Color': color_brecha,
-                    'Brecha': valor_verde - valor_amarillo
+                    'Grupo': val_grupo,
+                    'Esperado': val_esperado,
+                    'Color': color_linea,
+                    'Brecha': val_esperado - val_grupo
                 })
 
             df_plot = pd.DataFrame(filas_plot)
-
-            # Ordenar para que se vea mejor de arriba hacia abajo
             orden_y = list(df_plot['Área'])[::-1]
 
-            fig = px.scatter(
-                title=f"Perfil CHASIDE – {carrera_sel}",
-            )
+            fig = px.scatter(title=f"Perfil CHASIDE – {carrera_sel}")
 
-            # Líneas de mancuerna
+            # Líneas
             for _, row in df_plot.iterrows():
                 fig.add_shape(
                     type='line',
-                    x0=row['Amarillo'],
-                    x1=row['Verde'],
+                    x0=row['Grupo'],
+                    x1=row['Esperado'],
                     y0=row['Área'],
                     y1=row['Área'],
                     line=dict(color=row['Color'], width=4)
                 )
 
-            # Puntos amarillos
+            # 🔴 Perfil del grupo
             fig.add_scatter(
-                x=df_plot['Amarillo'],
+                x=df_plot['Grupo'],
                 y=df_plot['Área'],
                 mode='markers',
-                name='Perfil incorrecto',
+                name='Perfil del grupo',
                 marker=dict(
-                    color='#f59e0b',
-                    size=12,
-                    line=dict(
-                        color=[c for c in df_plot['Color']],
-                        width=3
-                    )
+                    color='#dc2626',
+                    size=12
                 ),
                 customdata=np.stack(
                     [
-                        df_plot['Verde'],
+                        df_plot['Esperado'],
                         df_plot['Brecha']
                     ],
                     axis=-1
                 ),
                 hovertemplate=(
                     "<b>%{y}</b><br>"
-                    "Perfil incorrecto: %{x:.2f}<br>"
-                    "Perfil correcto: %{customdata[0]:.2f}<br>"
-                    "Brecha (Verde - Amarillo): %{customdata[1]:.2f}"
+                    "Perfil del grupo: %{x:.2f}<br>"
+                    "Perfil esperado: %{customdata[0]:.2f}<br>"
+                    "Brecha: %{customdata[1]:.2f}"
                     "<extra></extra>"
                 )
             )
 
-            # Puntos verdes
+            # 🟢 Perfil esperado
             fig.add_scatter(
-                x=df_plot['Verde'],
+                x=df_plot['Esperado'],
                 y=df_plot['Área'],
                 mode='markers',
-                name='Perfil correcto',
+                name='Perfil esperado de la carrera',
                 marker=dict(
-                    color='#22c55e',
-                    size=12,
-                    line=dict(
-                        color=[c for c in df_plot['Color']],
-                        width=3
-                    )
+                    color='#16a34a',
+                    size=12
                 ),
                 customdata=np.stack(
                     [
-                        df_plot['Amarillo'],
+                        df_plot['Grupo'],
                         df_plot['Brecha']
                     ],
                     axis=-1
                 ),
                 hovertemplate=(
                     "<b>%{y}</b><br>"
-                    "Perfil correcto: %{x:.2f}<br>"
-                    "Perfil incorrecto: %{customdata[0]:.2f}<br>"
-                    "Brecha (Verde - Amarillo): %{customdata[1]:.2f}"
+                    "Perfil esperado: %{x:.2f}<br>"
+                    "Perfil del grupo: %{customdata[0]:.2f}<br>"
+                    "Brecha: %{customdata[1]:.2f}"
                     "<extra></extra>"
                 )
             )
 
             fig.update_layout(
-                xaxis_title="Promedio CHASIDE",
-                yaxis_title="Dimensión",
+                xaxis_title="Nivel promedio CHASIDE",
+                yaxis_title="Área",
                 yaxis=dict(categoryorder='array', categoryarray=orden_y),
                 height=650,
-                legend_title_text="Grupo"
+                legend_title_text=""
             )
 
             st.plotly_chart(fig, use_container_width=True)
-
-            # Resumen ejecutivo de brechas
-            df_plot['Brecha_Abs'] = (df_plot['Verde'] - df_plot['Amarillo']).abs()
-            top3 = df_plot.sort_values('Brecha_Abs', ascending=False).head(3)
-
-            st.markdown("**Dimensiones con mayor diferencia entre ambos perfiles:**")
-            for _, row in top3.iterrows():
-                sentido = "por detrás" if row['Amarillo'] < row['Verde'] else "por encima"
-                color_txt = "🔴" if row['Amarillo'] < row['Verde'] else "🟢"
-                st.markdown(
-                    f"- {color_txt} **{row['Área']}**: diferencia de **{row['Brecha_Abs']:.2f}** puntos. "
-                    f"El perfil incorrecto se encuentra **{sentido}** del perfil correcto."
-                )

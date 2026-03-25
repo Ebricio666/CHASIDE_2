@@ -596,9 +596,9 @@ else:
 import plotly.graph_objects as go
 
 import plotly.graph_objects as go
-
 import plotly.graph_objects as go
 import plotly.express as px
+import numpy as np
 
 # ============================================
 # 🌊 Sankey por carrera seleccionada
@@ -630,7 +630,9 @@ df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].asty
 # QUEDARSE SOLO CON PERFILES ÚNICOS
 # (sin comas = una sola carrera sugerida)
 # -------------------------------------------------
-df_sankey = df_sankey[~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)].copy()
+df_sankey = df_sankey[
+    ~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)
+].copy()
 
 if df_sankey.empty:
     st.info("No hay datos suficientes para construir el Sankey con perfiles únicos.")
@@ -659,13 +661,16 @@ else:
         # Colores por carrera destino
         # --------------------------------------------
         carreras_unicas_destino = destinos['Carrera_Mejor_Perfilada'].tolist()
-        palette = px.colors.qualitative.Set2 + px.colors.qualitative.Pastel + px.colors.qualitative.Safe
+
+        # Colores más sólidos para evitar efecto "lavado"
+        palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
+
         color_map_destino = {
             carrera: palette[i % len(palette)]
             for i, carrera in enumerate(carreras_unicas_destino)
         }
 
-        # si permanece en la misma carrera, verde
+        # Si permanece en la misma carrera, verde
         color_map_destino[carrera_sel] = '#22c55e'
 
         # --------------------------------------------
@@ -678,7 +683,9 @@ else:
         ]
         labels = label_origen + label_destinos
 
+        # --------------------------------------------
         # Índices
+        # --------------------------------------------
         source = [0] * len(destinos)
         target = list(range(1, len(destinos) + 1))
         value = destinos['N'].tolist()
@@ -693,26 +700,36 @@ else:
             axis=-1
         )
 
+        # --------------------------------------------
         # Colores de nodos
+        # --------------------------------------------
         node_colors = ['#60a5fa'] + [
             color_map_destino[dest]
             for dest in destinos['Carrera_Mejor_Perfilada']
         ]
 
+        # --------------------------------------------
         # Colores de enlaces
+        # --------------------------------------------
         link_colors = [
             color_map_destino[dest]
             for dest in destinos['Carrera_Mejor_Perfilada']
         ]
 
+        # --------------------------------------------
+        # Figura Sankey
+        # --------------------------------------------
         fig = go.Figure(data=[go.Sankey(
             arrangement="snap",
             node=dict(
                 pad=20,
                 thickness=22,
-                line=dict(color="gray", width=0.5),
+                line=dict(color="black", width=0.3),
                 label=labels,
-                color=node_colors
+                color=node_colors,
+                hoverlabel=dict(
+                    font=dict(color="black", size=13)
+                )
             ),
             link=dict(
                 source=source,
@@ -730,7 +747,13 @@ else:
 
         fig.update_layout(
             title=f"Transición vocacional desde {carrera_sel}",
-            font=dict(size=13),
+            font=dict(
+                size=14,
+                color="black",
+                family="Arial"
+            ),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
             height=700
         )
 
@@ -748,3 +771,6 @@ else:
         st.caption(
             f"Total analizado en {carrera_sel}: {n_inicial} estudiantes con carrera sugerida única."
         )
+import plotly.graph_objects as go
+import plotly.express as px
+

@@ -480,12 +480,14 @@ else:
 """)
 # ============================================
 # 📍 Diagrama de mancuernas CHASIDE por carrera
+#    Carrera en general vs perfil esperado
 # ============================================
-st.header("📍 Comparación de perfil vocacional por carrera (Mancuernas)")
+st.header("📍 Perfil general de la carrera vs perfil esperado (Mancuernas)")
 
 st.caption(
-    "Cada línea compara el perfil del grupo frente al perfil esperado de la carrera en cada dimensión CHASIDE. "
-    "Rojo indica que el grupo está por detrás del perfil esperado; verde indica alineación o superioridad."
+    "Cada línea compara el perfil promedio de toda la carrera frente al perfil esperado de la carrera "
+    "(estimado a partir del grupo con perfil congruente). "
+    "Rojo indica que la carrera está por detrás del perfil esperado; verde indica alineación o superioridad."
 )
 
 df_mancuerna = df.copy()
@@ -514,28 +516,42 @@ else:
 
     for tab, carrera_sel in zip(tabs, carreras_disp):
         with tab:
-            sub = df_mancuerna[df_mancuerna['Carrera'] == carrera_sel]
-            sub = sub[sub['Categoría'].isin(['Verde', 'Amarillo'])]
+            sub = df_mancuerna[df_mancuerna['Carrera'] == carrera_sel].copy()
 
-            if sub.empty or sub['Categoría'].nunique() < 2:
-                st.warning("No hay datos suficientes en esta carrera.")
+            if sub.empty:
+                st.warning("No hay datos en esta carrera.")
                 continue
 
-            prom = sub.groupby('Categoría')[areas].mean()
+            # -----------------------------
+            # Perfil general de la carrera
+            # -----------------------------
+            prom_carrera = sub[areas].mean()
+
+            # -----------------------------
+            # Perfil esperado de la carrera
+            # = promedio del grupo Verde
+            # -----------------------------
+            sub_verde = sub[sub['Categoría'] == 'Verde'].copy()
+
+            if sub_verde.empty:
+                st.warning("No hay suficientes estudiantes con perfil congruente (Verde) para estimar el perfil esperado.")
+                continue
+
+            prom_esperado = sub_verde[areas].mean()
 
             filas_plot = []
             for a in areas:
-                val_grupo = prom.loc['Amarillo', a]
-                val_esperado = prom.loc['Verde', a]
+                val_carrera = prom_carrera[a]
+                val_esperado = prom_esperado[a]
 
-                color_linea = '#dc2626' if val_grupo < val_esperado else '#16a34a'
+                color_linea = '#dc2626' if val_carrera < val_esperado else '#16a34a'
 
                 filas_plot.append({
                     'Área': areas_long[a],
-                    'Grupo': val_grupo,
+                    'Carrera': val_carrera,
                     'Esperado': val_esperado,
                     'Color': color_linea,
-                    'Brecha': val_esperado - val_grupo
+                    'Brecha': val_esperado - val_carrera
                 })
 
             df_plot = pd.DataFrame(filas_plot)
@@ -543,23 +559,23 @@ else:
 
             fig = px.scatter(title=f"Perfil CHASIDE – {carrera_sel}")
 
-            # Líneas
+            # Líneas de mancuerna
             for _, row in df_plot.iterrows():
                 fig.add_shape(
                     type='line',
-                    x0=row['Grupo'],
+                    x0=row['Carrera'],
                     x1=row['Esperado'],
                     y0=row['Área'],
                     y1=row['Área'],
                     line=dict(color=row['Color'], width=4)
                 )
 
-            # 🔴 Perfil del grupo
+            # 🔴 Perfil general de la carrera
             fig.add_scatter(
-                x=df_plot['Grupo'],
+                x=df_plot['Carrera'],
                 y=df_plot['Área'],
                 mode='markers',
-                name='Perfil del grupo',
+                name='Perfil general de la carrera',
                 marker=dict(
                     color='#dc2626',
                     size=12
@@ -573,14 +589,14 @@ else:
                 ),
                 hovertemplate=(
                     "<b>%{y}</b><br>"
-                    "Perfil del grupo: %{x:.2f}<br>"
+                    "Perfil general de la carrera: %{x:.2f}<br>"
                     "Perfil esperado: %{customdata[0]:.2f}<br>"
                     "Brecha: %{customdata[1]:.2f}"
                     "<extra></extra>"
                 )
             )
 
-            # 🟢 Perfil esperado
+            # 🟢 Perfil esperado de la carrera
             fig.add_scatter(
                 x=df_plot['Esperado'],
                 y=df_plot['Área'],
@@ -592,15 +608,15 @@ else:
                 ),
                 customdata=np.stack(
                     [
-                        df_plot['Grupo'],
+                        df_plot['Carrera'],
                         df_plot['Brecha']
                     ],
                     axis=-1
                 ),
                 hovertemplate=(
                     "<b>%{y}</b><br>"
-                    "Perfil esperado: %{x:.2f}<br>"
-                    "Perfil del grupo: %{customdata[0]:.2f}<br>"
+                    "Perfil esperado de la carrera: %{x:.2f}<br>"
+                    "Perfil general de la carrera: %{customdata[0]:.2f}<br>"
                     "Brecha: %{customdata[1]:.2f}"
                     "<extra></extra>"
                 )
@@ -615,3 +631,13 @@ else:
             )
 
             st.plotly_chart(fig, use_container_width=True)
+
+            # Resumen breve
+            st.markdown("**Lectura rápida:**")
+            n_rojas = (df_plot['Carrera'] < df_plot['Esperado']).sum()
+            n_verdes = (df_plot['Carrera'] >= df_plot['Esperado']).sum()
+
+            st.markdown(
+                f"- Dimensiones por debajo del perfil esperado: **{n_rojas}**  \n"
+                f"- Dimensiones alineadas o por encima del perfil esperado: **{n_verdes}**"
+            )

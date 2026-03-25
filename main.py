@@ -479,149 +479,117 @@ else:
 - **Jóven promesa**: estudiantes en el cuartil superior del grupo verde, con el mejor ajuste vocacional relativo dentro de su carrera.  
 """)
 # ============================================
-# 📍 Diagrama de mancuernas CHASIDE por carrera
-#    Perfil en riesgo vs Perfil en transición
+# 📊 Barras CHASIDE por área (Verde vs Amarillo)
 # ============================================
-st.header("📍 Comparación entre perfil en riesgo y perfil en transición")
+st.header("📊 Áreas prioritarias CHASIDE (Verde vs Amarillo)")
 
 st.caption(
-    "Cada línea compara el promedio del grupo en riesgo frente al grupo en transición "
-    "en cada dimensión CHASIDE. "
-    "Rojo indica que el grupo en riesgo está por detrás del grupo en transición; "
-    "verde indica que lo iguala o supera."
+    "Comparación del perfil promedio entre estudiantes cuyo perfil coincide con la carrera (Verde) "
+    "y aquellos cuyo perfil no es acorde (Amarillo). "
+    "Las áreas se ordenan por brecha, facilitando la identificación de prioridades de intervención."
 )
 
-# Usamos la base con niveles de intensidad ya construidos
-df_mancuerna = df_intensidad.copy()
+# --------------------------------------------
+# Preparar datos
+# --------------------------------------------
+df_bar = df.copy()
 
 for a in areas:
-    df_mancuerna[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
+    df_bar[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
 
-df_mancuerna['Carrera'] = df[columna_carrera]
+df_bar = df_bar[df_bar['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])].copy()
 
-areas_long = {
-    "C": "Administrativo",
-    "H": "Humanidades y Sociales",
-    "A": "Artístico",
-    "S": "Ciencias de la Salud",
-    "I": "Enseñanzas Técnicas",
-    "D": "Defensa y Seguridad",
-    "E": "Ciencias Experimentales"
-}
-
-carreras_disp = sorted(df_mancuerna['Carrera'].dropna().unique())
-
-if not carreras_disp:
-    st.info("No hay carreras para mostrar en el diagrama.")
+if df_bar.empty:
+    st.info("No hay datos suficientes de Verde y Amarillo.")
 else:
-    tabs = st.tabs(carreras_disp)
 
-    for tab, carrera_sel in zip(tabs, carreras_disp):
-        with tab:
-            sub = df_mancuerna[df_mancuerna['Carrera'] == carrera_sel].copy()
-            sub = sub[sub['Nivel_Intensidad'].isin(['Perfil en riesgo', 'Perfil en transición'])]
+    carreras_disp = sorted(df_bar[columna_carrera].dropna().unique())
+    carrera_sel = st.selectbox("Selecciona una carrera:", carreras_disp)
 
-            if sub.empty or sub['Nivel_Intensidad'].nunique() < 2:
-                st.warning("No hay datos suficientes de perfil en riesgo y perfil en transición en esta carrera.")
-                continue
+    sub = df_bar[df_bar[columna_carrera] == carrera_sel]
 
-            prom = sub.groupby('Nivel_Intensidad')[areas].mean()
+    if sub.empty or sub['Semáforo Vocacional'].nunique() < 2:
+        st.warning("No hay suficientes datos para comparar en esta carrera.")
+    else:
 
-            if 'Perfil en riesgo' not in prom.index or 'Perfil en transición' not in prom.index:
-                st.warning("Faltan datos de alguno de los dos perfiles en esta carrera.")
-                continue
+        # --------------------------------------------
+        # Promedios por grupo
+        # --------------------------------------------
+        prom = sub.groupby('Semáforo Vocacional')[areas].mean()
 
-            filas_plot = []
-            for a in areas:
-                val_riesgo = prom.loc['Perfil en riesgo', a]
-                val_transicion = prom.loc['Perfil en transición', a]
+        # --------------------------------------------
+        # Calcular brecha (Verde - Amarillo)
+        # --------------------------------------------
+        brechas = (prom.loc['Verde'] - prom.loc['Amarillo']).sort_values(ascending=False)
 
-                color_linea = '#dc2626' if val_riesgo < val_transicion else '#16a34a'
+        # --------------------------------------------
+        # DataFrame para gráfico
+        # --------------------------------------------
+        df_plot = pd.DataFrame({
+            'Área': brechas.index,
+            'Verde': prom.loc['Verde'][brechas.index],
+            'Amarillo': prom.loc['Amarillo'][brechas.index],
+            'Brecha': brechas.values
+        })
 
-                filas_plot.append({
-                    'Área': areas_long[a],
-                    'Riesgo': val_riesgo,
-                    'Transicion': val_transicion,
-                    'Color': color_linea,
-                    'Brecha': val_transicion - val_riesgo
-                })
+        # nombres largos
+        areas_long = {
+            "C": "Administrativo",
+            "H": "Humanidades y Sociales",
+            "A": "Artístico",
+            "S": "Ciencias de la Salud",
+            "I": "Enseñanzas Técnicas",
+            "D": "Defensa y Seguridad",
+            "E": "Ciencias Experimentales"
+        }
 
-            df_plot = pd.DataFrame(filas_plot)
-            orden_y = list(df_plot['Área'])[::-1]
+        df_plot['Área'] = df_plot['Área'].map(areas_long)
 
-            fig = px.scatter(title=f"Perfil CHASIDE – {carrera_sel}")
+        # --------------------------------------------
+        # Formato largo para stacked
+        # --------------------------------------------
+        df_long = df_plot.melt(
+            id_vars='Área',
+            value_vars=['Verde', 'Amarillo'],
+            var_name='Perfil',
+            value_name='Valor'
+        )
 
-            # Líneas
-            for _, row in df_plot.iterrows():
-                x_min = min(row['Riesgo'], row['Transicion'])
-x_max = max(row['Riesgo'], row['Transicion'])
+        # --------------------------------------------
+        # GRÁFICA
+        # --------------------------------------------
+        fig = px.bar(
+            df_long,
+            y='Área',
+            x='Valor',
+            color='Perfil',
+            barmode='stack',
+            orientation='h',
+            color_discrete_map={
+                'Verde': '#22c55e',
+                'Amarillo': '#f59e0b'
+            },
+            title=f"Perfil CHASIDE por área – {carrera_sel}"
+        )
 
-fig.add_shape(
-    type='line',
-    x0=x_min,
-    x1=x_max,
-    y0=row['Área'],
-    y1=row['Área'],
-    line=dict(color=row['Color'], width=4)
-)
-            # 🔴 Perfil en riesgo
-            fig.add_scatter(
-                x=df_plot['Riesgo'],
-                y=df_plot['Área'],
-                mode='markers',
-                name='Perfil en riesgo',
-                marker=dict(
-                    color='#dc2626',
-                    size=12
-                ),
-                customdata=np.stack(
-                    [
-                        df_plot['Transicion'],
-                        df_plot['Brecha']
-                    ],
-                    axis=-1
-                ),
-                hovertemplate=(
-                    "<b>%{y}</b><br>"
-                    "Perfil en riesgo: %{x:.2f}<br>"
-                    "Perfil en transición: %{customdata[0]:.2f}<br>"
-                    "Brecha: %{customdata[1]:.2f}"
-                    "<extra></extra>"
-                )
+        fig.update_layout(
+            xaxis_title="Nivel promedio CHASIDE",
+            yaxis_title="Área",
+            height=600
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # --------------------------------------------
+        # INTERPRETACIÓN AUTOMÁTICA
+        # --------------------------------------------
+        st.markdown("### 🔎 Lectura del gráfico")
+
+        top3 = df_plot.head(3)
+
+        st.markdown("**Áreas con mayor diferencia (prioridad de intervención):**")
+        for _, row in top3.iterrows():
+            st.markdown(
+                f"- **{row['Área']}** → Diferencia de {row['Brecha']:.2f} puntos "
+                f"(Verde: {row['Verde']:.2f} vs Amarillo: {row['Amarillo']:.2f})"
             )
-
-            # 🟢 Perfil en transición
-            fig.add_scatter(
-                x=df_plot['Transicion'],
-                y=df_plot['Área'],
-                mode='markers',
-                name='Perfil en transición',
-                marker=dict(
-                    color='#16a34a',
-                    size=12
-                ),
-                customdata=np.stack(
-                    [
-                        df_plot['Riesgo'],
-                        df_plot['Brecha']
-                    ],
-                    axis=-1
-                ),
-                hovertemplate=(
-                    "<b>%{y}</b><br>"
-                    "Perfil en transición: %{x:.2f}<br>"
-                    "Perfil en riesgo: %{customdata[0]:.2f}<br>"
-                    "Brecha: %{customdata[1]:.2f}"
-                    "<extra></extra>"
-                )
-            )
-
-            fig.update_layout(
-                xaxis_title="Nivel promedio CHASIDE",
-                yaxis_title="Área",
-                yaxis=dict(categoryorder='array', categoryarray=orden_y),
-                height=650,
-                legend_title_text=""
-            )
-
-            st.plotly_chart(fig, use_container_width=True)

@@ -329,129 +329,114 @@ st.plotly_chart(fig_stacked, use_container_width=True)
 # 🎻 Diagrama de violín – Verde vs Amarillo
 # ============================================
 # ============================================
-# 📊 Barra vertical de intensidad – Amarillo vs Verde
+# 📊 Barra vertical de intensidad – 4 niveles
 # ============================================
 st.header("📊 Intensidad del perfil vocacional por carrera")
 
 st.caption(
-    "La barra apilada ordena a los estudiantes desde el nivel más bajo del grupo amarillo "
-    "hasta el nivel más alto del grupo verde. El gradiente rojo→verde facilita identificar "
+    "La barra apilada ordena a los estudiantes desde los niveles más alejados del perfil esperado "
+    "hasta los de mayor congruencia vocacional. El gradiente rojo→verde facilita identificar "
     "riesgo vocacional y potencial de ajuste al perfil."
 )
 
 df_intensidad = df.copy()
 df_intensidad['Score'] = df_intensidad[[f'PUNTAJE_COMBINADO_{a}' for a in areas]].max(axis=1)
 
-# Solo usamos Verde y Amarillo
+# Solo Verde y Amarillo
 df_intensidad = df_intensidad[df_intensidad['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])].copy()
 
 if df_intensidad.empty:
     st.info("No hay estudiantes en categorías Verde o Amarillo para construir la barra de intensidad.")
 else:
-    def asignar_bloques_por_carrera(grupo):
+    def asignar_niveles_por_carrera(grupo):
         grupo = grupo.copy()
+        grupo['Nivel_Intensidad'] = np.nan
 
         amar = grupo[grupo['Semáforo Vocacional'] == 'Amarillo'].copy()
         ver = grupo[grupo['Semáforo Vocacional'] == 'Verde'].copy()
 
-        # Inicializar
-        grupo['Bloque_Intensidad'] = np.nan
-
-        # Amarillo: del peor al mejor
+        # -------------------------
+        # Amarillo → 2 niveles
+        # -------------------------
         if len(amar) > 0:
             amar = amar.sort_values('Score', ascending=True).copy()
             amar['rank_pct'] = (np.arange(len(amar)) + 1) / len(amar)
 
-            amar['Bloque_Intensidad'] = np.select(
-                [
-                    amar['rank_pct'] <= 0.25,
-                    amar['rank_pct'] <= 0.50,
-                    amar['rank_pct'] <= 0.75,
-                    amar['rank_pct'] <= 1.00,
-                ],
-                ['A4', 'A3', 'A2', 'A1'],
-                default='A1'
+            amar['Nivel_Intensidad'] = np.where(
+                amar['rank_pct'] <= 0.25,
+                'Sin perfil',
+                'Perfil en riesgo'
             )
-            grupo.loc[amar.index, 'Bloque_Intensidad'] = amar['Bloque_Intensidad']
+            grupo.loc[amar.index, 'Nivel_Intensidad'] = amar['Nivel_Intensidad']
 
-        # Verde: del más bajo al más alto
+        # -------------------------
+        # Verde → 2 niveles
+        # -------------------------
         if len(ver) > 0:
             ver = ver.sort_values('Score', ascending=True).copy()
             ver['rank_pct'] = (np.arange(len(ver)) + 1) / len(ver)
 
-            ver['Bloque_Intensidad'] = np.select(
-                [
-                    ver['rank_pct'] <= 0.25,
-                    ver['rank_pct'] <= 0.50,
-                    ver['rank_pct'] <= 0.75,
-                    ver['rank_pct'] <= 1.00,
-                ],
-                ['V4', 'V3', 'V2', 'V1'],
-                default='V1'
+            ver['Nivel_Intensidad'] = np.where(
+                ver['rank_pct'] > 0.75,
+                'Jóven promesa',
+                'Perfil en transición'
             )
-            grupo.loc[ver.index, 'Bloque_Intensidad'] = ver['Bloque_Intensidad']
+            grupo.loc[ver.index, 'Nivel_Intensidad'] = ver['Nivel_Intensidad']
 
         return grupo
 
     df_intensidad = (
         df_intensidad
         .groupby(columna_carrera, group_keys=False)
-        .apply(asignar_bloques_por_carrera)
+        .apply(asignar_niveles_por_carrera)
         .copy()
     )
 
-    orden_bloques = ['A4', 'A3', 'A2', 'A1', 'V4', 'V3', 'V2', 'V1']
+    orden_niveles = [
+        'Sin perfil',
+        'Perfil en riesgo',
+        'Perfil en transición',
+        'Jóven promesa'
+    ]
 
-    etiquetas_bloques = {
-        'A4': 'Sin perfil',
-        'A3': 'Amarillo - Cuartil 3',
-        'A2': 'Amarillo - Cuartil 2',
-        'A1': 'Amarillo - Cuartil 1',
-        'V4': 'Verde - Cuartil 4',
-        'V3': 'Verde - Cuartil 3',
-        'V2': 'Verde - Cuartil 2',
-        'V1': 'Jóven promesa'
+    colores_niveles = {
+        'Sin perfil': '#dc2626',             # rojo
+        'Perfil en riesgo': '#f59e0b',       # amarillo/naranja
+        'Perfil en transición': '#84cc16',   # verde amarillento
+        'Jóven promesa': '#16a34a'           # verde fuerte
     }
 
-    colores_bloques = {
-        'A4': '#b91c1c',   # rojo intenso
-        'A3': '#dc2626',   # rojo
-        'A2': '#f97316',   # naranja
-        'A1': '#f59e0b',   # ámbar
-        'V4': '#a3e635',   # lima
-        'V3': '#4ade80',   # verde claro
-        'V2': '#22c55e',   # verde
-        'V1': '#15803d'    # verde profundo
-    }
-
+    # Resumen por carrera y nivel
     resumen_intensidad = (
         df_intensidad
-        .groupby([columna_carrera, 'Bloque_Intensidad'], dropna=False)
-        .size()
-        .reset_index(name='N')
+        .groupby([columna_carrera, 'Nivel_Intensidad'], dropna=False)
+        .agg(
+            N=(columna_nombre, 'count'),
+            Estudiantes=(columna_nombre, lambda x: "<br>".join(sorted(x.astype(str).tolist())))
+        )
+        .reset_index()
     )
 
-    resumen_intensidad['Bloque_Intensidad'] = pd.Categorical(
-        resumen_intensidad['Bloque_Intensidad'],
-        categories=orden_bloques,
+    resumen_intensidad['Nivel_Intensidad'] = pd.Categorical(
+        resumen_intensidad['Nivel_Intensidad'],
+        categories=orden_niveles,
         ordered=True
     )
 
-    # porcentaje acumulado por carrera
+    resumen_intensidad = resumen_intensidad.sort_values([columna_carrera, 'Nivel_Intensidad'])
+
     resumen_intensidad['%'] = (
         resumen_intensidad.groupby(columna_carrera)['N']
         .transform(lambda x: 0 if x.sum() == 0 else (x / x.sum() * 100))
     )
 
-    resumen_intensidad['Etiqueta'] = resumen_intensidad['Bloque_Intensidad'].map(etiquetas_bloques)
-
     fig_intensidad = px.bar(
         resumen_intensidad,
         x=columna_carrera,
         y='%',
-        color='Bloque_Intensidad',
-        category_orders={'Bloque_Intensidad': orden_bloques},
-        color_discrete_map=colores_bloques,
+        color='Nivel_Intensidad',
+        category_orders={'Nivel_Intensidad': orden_niveles},
+        color_discrete_map=colores_niveles,
         barmode='stack',
         text=resumen_intensidad['%'].round(1).astype(str) + '%',
         title="Escala de intensidad vocacional por carrera"
@@ -462,24 +447,37 @@ else:
         xaxis_title="Carrera",
         xaxis_tickangle=-30,
         height=720,
-        legend_title_text="Nivel de intensidad"
+        legend_title_text="Nivel"
     )
 
     fig_intensidad.update_traces(
-        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>Porcentaje: %{y:.1f}%<extra></extra>",
-        customdata=np.stack([resumen_intensidad['Etiqueta']], axis=-1)
+        customdata=np.stack(
+            [
+                resumen_intensidad['Nivel_Intensidad'],
+                resumen_intensidad['N'],
+                resumen_intensidad['Estudiantes']
+            ],
+            axis=-1
+        ),
+        hovertemplate=(
+            "<b>Carrera:</b> %{x}<br>"
+            "<b>Nivel:</b> %{customdata[0]}<br>"
+            "<b>Porcentaje:</b> %{y:.1f}%<br>"
+            "<b>Número de estudiantes:</b> %{customdata[1]}<br>"
+            "<b>Estudiantes:</b><br>%{customdata[2]}"
+            "<extra></extra>"
+        )
     )
 
     st.plotly_chart(fig_intensidad, use_container_width=True)
 
     st.markdown("### Lectura sugerida de la escala")
     st.markdown("""
-- **Sin perfil**: estudiantes ubicados en el tramo más bajo del grupo amarillo.  
-- **Perfil en riesgo**: estudiantes aún en amarillo, pero con mejor puntaje relativo.  
-- **Perfil en transición**: estudiantes ya en verde, aunque todavía en los tramos bajos o medios.  
-- **Jóven promesa**: estudiantes en el cuartil más alto del grupo verde.  
+- **Sin perfil**: estudiantes con el nivel más bajo dentro del grupo amarillo.  
+- **Perfil en riesgo**: estudiantes cuyo perfil no va acorde con la carrera elegida, aunque con mejor puntaje relativo que el nivel anterior.  
+- **Perfil en transición**: estudiantes que sí muestran congruencia con la carrera, pero aún sin ubicarse en los niveles más altos del grupo verde.  
+- **Jóven promesa**: estudiantes en el cuartil superior del grupo verde, con el mejor ajuste vocacional relativo dentro de su carrera.  
 """)
-
 # ============================================
 # 🕸️ Radar CHASIDE por carrera · Verde vs Amarillo
 # ============================================

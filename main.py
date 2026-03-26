@@ -467,15 +467,14 @@ else:
 """)
 
 # ============================================
-# 🌊 Sankey por carrera seleccionada
-#    Solo estudiantes cuya carrera sugerida es distinta
+# 🌊 Sankey global: migración hacia Arquitectura
 # ============================================
-st.header("🌊 Transición vocacional por carrera")
+st.header("🌊 Migración potencial hacia Arquitectura")
 
 st.caption(
-    "Seleccione una carrera para visualizar únicamente a los estudiantes que eligieron una carrera, "
-    "pero cuyo perfil CHASIDE sugiere otra opción con mejor ajuste. "
-    "Solo se consideran estudiantes con una carrera sugerida única."
+    "El diagrama muestra, para todas las carreras, cuántos estudiantes eligieron una carrera "
+    "distinta pero su perfil CHASIDE sugiere Arquitectura como mejor ajuste. "
+    "Solo se consideran estudiantes con carrera sugerida única."
 )
 
 df_sankey = df.copy()
@@ -497,143 +496,116 @@ df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)
 ].copy()
 
+# Quedarse solo con quienes migrarían hacia Arquitectura
+df_sankey = df_sankey[
+    (df_sankey['Carrera_Mejor_Perfilada'] == 'Arquitectura') &
+    (df_sankey[columna_carrera] != 'Arquitectura')
+].copy()
+
 if df_sankey.empty:
-    st.info("No hay datos suficientes para construir el Sankey con perfiles únicos.")
+    st.info("No se encontraron estudiantes que migren hacia Arquitectura bajo este criterio.")
 else:
-    carreras_disp = sorted(df_sankey[columna_carrera].unique())
-    carrera_sel = st.selectbox("Seleccione la carrera de origen:", carreras_disp)
+    # --------------------------------------------
+    # Conteo por carrera de origen
+    # --------------------------------------------
+    flujos = (
+        df_sankey
+        .groupby(columna_carrera)
+        .size()
+        .reset_index(name='N')
+        .sort_values('N', ascending=False)
+    )
 
-    sub = df_sankey[df_sankey[columna_carrera] == carrera_sel].copy()
+    total_migran = flujos['N'].sum()
 
-    if sub.empty:
-        st.warning("No hay estudiantes con perfil único para esta carrera.")
-    else:
-        # --------------------------------------------
-        # Quedarse SOLO con quienes migrarían
-        # --------------------------------------------
-        sub = sub[sub['Carrera_Mejor_Perfilada'] != carrera_sel].copy()
+    carreras_origen = flujos[columna_carrera].tolist()
 
-        if sub.empty:
-            st.success(
-                f"Todos los estudiantes con perfil único de {carrera_sel} coinciden con la carrera elegida."
+    # Etiquetas
+    labels_origen = [
+        f"{carrera}<br>Origen: {n}"
+        for carrera, n in zip(flujos[columna_carrera], flujos['N'])
+    ]
+    label_destino = [f"Arquitectura<br>Recibe: {total_migran}"]
+
+    labels = labels_origen + label_destino
+
+    # Índices
+    source = list(range(len(carreras_origen)))
+    target = [len(carreras_origen)] * len(carreras_origen)
+    value = flujos['N'].tolist()
+
+    # Colores por carrera de origen
+    palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
+    color_map_origen = {
+        carrera: palette[i % len(palette)]
+        for i, carrera in enumerate(carreras_origen)
+    }
+
+    node_colors = [color_map_origen[c] for c in carreras_origen] + ['#22c55e']
+    link_colors = [color_map_origen[c] for c in carreras_origen]
+
+    # Hover
+    porcentajes = (flujos['N'] / total_migran * 100).round(1)
+    customdata = np.stack(
+        [
+            flujos[columna_carrera],
+            ['Arquitectura'] * len(flujos),
+            flujos['N'],
+            porcentajes
+        ],
+        axis=-1
+    )
+
+    fig_sankey = go.Figure(data=[go.Sankey(
+        arrangement="snap",
+        node=dict(
+            pad=20,
+            thickness=22,
+            line=dict(color="black", width=0.3),
+            label=labels,
+            color=node_colors,
+            hoverlabel=dict(
+                font=dict(color="black", size=13)
             )
-        else:
-            destinos = (
-                sub.groupby('Carrera_Mejor_Perfilada')
-                .size()
-                .reset_index(name='N')
-                .sort_values('N', ascending=False)
+        ),
+        link=dict(
+            source=source,
+            target=target,
+            value=value,
+            color=link_colors,
+            customdata=customdata,
+            hovertemplate=(
+                "Carrera elegida: %{customdata[0]}<br>"
+                "Carrera sugerida: %{customdata[1]}<br>"
+                "Estudiantes: %{customdata[2]}<br>"
+                "Porcentaje del total: %{customdata[3]}%<extra></extra>"
             )
+        )
+    )])
 
-            n_migran = len(sub)
+    fig_sankey.update_layout(
+        title="Migración potencial de todas las carreras hacia Arquitectura",
+        font=dict(
+            size=14,
+            color="black",
+            family="Arial"
+        ),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        height=750
+    )
 
-            # Colores sólidos por destino
-            palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
-            carreras_unicas_destino = destinos['Carrera_Mejor_Perfilada'].tolist()
+    st.plotly_chart(fig_sankey, use_container_width=True)
 
-            color_map_destino = {
-                carrera: palette[i % len(palette)]
-                for i, carrera in enumerate(carreras_unicas_destino)
-            }
+    # --------------------------------------------
+    # Resumen numérico
+    # --------------------------------------------
+    st.markdown("### Resumen numérico")
+    for _, row in flujos.iterrows():
+        pct = row['N'] / total_migran * 100 if total_migran else 0
+        st.markdown(
+            f"- **{row[columna_carrera]} → Arquitectura**: "
+            f"{row['N']} estudiantes ({pct:.1f}%)"
+        )
 
-            # Etiquetas
-            label_origen = [f"{carrera_sel}<br>Migran: {n_migran}"]
-            label_destinos = [
-                f"{row['Carrera_Mejor_Perfilada']}<br>Recibe: {row['N']}"
-                for _, row in destinos.iterrows()
-            ]
-            labels = label_origen + label_destinos
-
-            # Índices
-            source = [0] * len(destinos)
-            target = list(range(1, len(destinos) + 1))
-            value = destinos['N'].tolist()
-
-            porcentaje_destino = (destinos['N'] / n_migran * 100).round(1)
-
-            customdata = np.stack(
-                [
-                    [carrera_sel] * len(destinos),
-                    destinos['Carrera_Mejor_Perfilada'],
-                    destinos['N'],
-                    porcentaje_destino
-                ],
-                axis=-1
-            )
-
-            node_colors = ['#60a5fa'] + [
-                color_map_destino[dest]
-                for dest in destinos['Carrera_Mejor_Perfilada']
-            ]
-
-            link_colors = [
-                color_map_destino[dest]
-                for dest in destinos['Carrera_Mejor_Perfilada']
-            ]
-
-            fig_sankey = go.Figure(data=[go.Sankey(
-                arrangement="snap",
-                node=dict(
-                    pad=20,
-                    thickness=22,
-                    line=dict(color="black", width=0.3),
-                    label=labels,
-                    color=node_colors,
-                    hoverlabel=dict(
-                        font=dict(color="black", size=13)
-                    )
-                ),
-                link=dict(
-                    source=source,
-                    target=target,
-                    value=value,
-                    color=link_colors,
-                    customdata=customdata,
-                    hovertemplate=(
-                        "Carrera elegida: %{customdata[0]}<br>"
-                        "Carrera sugerida: %{customdata[1]}<br>"
-                        "Estudiantes: %{customdata[2]}<br>"
-                        "Porcentaje: %{customdata[3]}%<extra></extra>"
-                    )
-                )
-            )])
-
-            fig_sankey.update_layout(
-                title=f"Estudiantes de {carrera_sel} cuyo perfil sugiere otra carrera",
-                font=dict(
-                    size=14,
-                    color="black",
-                    family="Arial"
-                ),
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                height=700
-            )
-
-            st.plotly_chart(fig_sankey, use_container_width=True)
-
-            # KPIs
-            total_unicos = len(
-                df_sankey[df_sankey[columna_carrera] == carrera_sel]
-            )
-            pct_migran_total = (n_migran / total_unicos * 100) if total_unicos else 0
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Total con perfil único", total_unicos)
-            with col2:
-                st.metric("Migrarían a otra carrera", f"{n_migran} ({pct_migran_total:.1f}%)")
-
-            st.markdown("### Resumen numérico")
-            for _, row in destinos.iterrows():
-                pct = row['N'] / n_migran * 100 if n_migran else 0
-                st.markdown(
-                    f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: "
-                    f"{row['N']} estudiantes ({pct:.1f}% de quienes migrarían)"
-                )
-
-            principal_destino = destinos.iloc[0]
-            st.info(
-                f"La principal carrera sugerida para estudiantes de **{carrera_sel}** es "
-                f"**{principal_destino['Carrera_Mejor_Perfilada']}**, con **{principal_destino['N']}** estudiantes."
-            )
+    st.metric("Total que migraría hacia Arquitectura", total_migran)

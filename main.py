@@ -459,118 +459,242 @@ else:
     st.plotly_chart(fig_intensidad, use_container_width=True)
 
 # ============================================
-# 🌊 Sankey global: migración hacia Arquitectura
+# 🌊 Sankey vocacional por carrera
+#    Carrera elegida vs carrera con mejor ajuste compatible
 # ============================================
-st.header("🌊 Migración potencial hacia Arquitectura")
+st.header("🌊 Transición vocacional compatible por carrera")
 
 st.caption(
-    "El diagrama muestra, para todas las carreras, cuántos estudiantes eligieron una carrera "
-    "distinta pero su perfil CHASIDE sugiere Arquitectura como mejor ajuste. "
-    "Solo se consideran estudiantes con carrera sugerida única."
+    "Seleccione una carrera para analizar si sus estudiantes presentan mejor ajuste "
+    "hacia otra carrera con perfil CHASIDE compatible. "
+    "Solo se consideran transiciones razonables entre carreras con al menos dos letras CHASIDE en común."
 )
 
+# --------------------------------------------
+# Base para Sankey
+# --------------------------------------------
 df_sankey = df.copy()
+
+# Excluir respuestas poco confiables
 df_sankey = df_sankey[
-    ~df_sankey['Carrera_Mejor_Perfilada'].isin([
-        'Información no confiable',
-        'Sin sugerencia clara'
-    ])
+    ~df_sankey['Semáforo Vocacional'].isin(['Respondió siempre igual'])
 ].copy()
 
 df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
-df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].astype(str).str.strip()
 
-df_sankey = df_sankey[
-    ~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)
-].copy()
+# --------------------------------------------
+# Funciones auxiliares
+# --------------------------------------------
+def letras_carrera(carrera):
+    perfil = perfil_carreras.get(str(carrera).strip(), {})
+    return perfil.get('Fuerte', [])
 
-df_sankey = df_sankey[
-    (df_sankey['Carrera_Mejor_Perfilada'] == 'Arquitectura') &
-    (df_sankey[columna_carrera] != 'Arquitectura')
-].copy()
+def puntaje_promedio_carrera(row, carrera):
+    letras = letras_carrera(carrera)
+    if not letras:
+        return np.nan
+    vals = [row[f'PUNTAJE_COMBINADO_{l}'] for l in letras]
+    return np.mean(vals)
 
-if df_sankey.empty:
-    st.info("No se encontraron estudiantes que migren hacia Arquitectura bajo este criterio.")
+def carreras_compatibles(carrera_origen):
+    letras_origen = set(letras_carrera(carrera_origen))
+    compatibles = []
+
+    for carrera_destino in perfil_carreras.keys():
+        if carrera_destino == carrera_origen:
+            continue
+        letras_destino = set(letras_carrera(carrera_destino))
+        inter = letras_origen.intersection(letras_destino)
+
+        # Compatibilidad mínima: al menos 2 letras en común
+        if len(inter) >= 2:
+            compatibles.append(carrera_destino)
+
+    return compatibles
+
+def mejor_destino_compatible(row, carrera_origen):
+    """
+    Devuelve la mejor carrera compatible para el estudiante.
+    Si ninguna mejora el ajuste respecto a la carrera elegida, se queda en la misma.
+    """
+    score_origen = puntaje_promedio_carrera(row, carrera_origen)
+    candidatas = carreras_compatibles(carrera_origen)
+
+    mejor_carrera = carrera_origen
+    mejor_score = score_origen
+
+    for c in candidatas:
+        score_c = puntaje_promedio_carrera(row, c)
+        if pd.notna(score_c) and score_c > mejor_score:
+            mejor_score = score_c
+            mejor_carrera = c
+
+    return mejor_carrera, score_origen, mejor_score
+
+# --------------------------------------------
+# Selector de carrera
+# --------------------------------------------
+carreras_disp = sorted(df_sankey[columna_carrera].dropna().unique())
+
+if not carreras_disp:
+    st.info("No hay carreras disponibles para construir el Sankey.")
 else:
-    flujos = (
-        df_sankey
-        .groupby(columna_carrera)
-        .size()
-        .reset_index(name='N')
-        .sort_values('N', ascending=False)
-    )
+    carrera_sel = st.selectbox("Seleccione la carrera de origen:", carreras_disp)
 
-    total_migran = flujos['N'].sum()
-    carreras_origen = flujos[columna_carrera].tolist()
+    sub = df_sankey[df_sankey[columna_carrera] == carrera_sel].copy()
 
-    labels_origen = [
-        f"{carrera}<br>Origen: {n}"
-        for carrera, n in zip(flujos[columna_carrera], flujos['N'])
-    ]
-    label_destino = [f"Arquitectura<br>Recibe: {total_migran}"]
-    labels = labels_origen + label_destino
+    if sub.empty:
+        st.warning("No hay estudiantes para esta carrera.")
+    else:
+        # --------------------------------------------
+        # Calcular destino compatible estudiante por estudiante
+        # --------------------------------------------
+        destinos = []
+        score_origen_list = []
+        score_destino_list = []
 
-    source = list(range(len(carreras_origen)))
-    target = [len(carreras_origen)] * len(carreras_origen)
-    value = flujos['N'].tolist()
+        for _, row in sub.iterrows():
+            destino, score_origen, score_destino = mejor_destino_compatible(row, carrera_sel)
+            destinos.append(destino)
+            score_origen_list.append(score_origen)
+            score_destino_list.append(score_destino)
 
-    palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
-    color_map_origen = {
-        carrera: palette[i % len(palette)]
-        for i, carrera in enumerate(carreras_origen)
-    }
+        sub['Destino_Compatible'] = destinos
+        sub['Score_Origen'] = score_origen_list
+        sub['Score_Destino'] = score_destino_list
+        sub['Migra'] = sub['Destino_Compatible'] != carrera_sel
 
-    node_colors = [color_map_origen[c] for c in carreras_origen] + ['#22c55e']
-    link_colors = [color_map_origen[c] for c in carreras_origen]
-
-    porcentajes = (flujos['N'] / total_migran * 100).round(1)
-    customdata = np.stack(
-        [
-            flujos[columna_carrera],
-            ['Arquitectura'] * len(flujos),
-            flujos['N'],
-            porcentajes
-        ],
-        axis=-1
-    )
-
-    fig_sankey = go.Figure(data=[go.Sankey(
-        arrangement="snap",
-        node=dict(
-            pad=20,
-            thickness=22,
-            line=dict(color="black", width=0.3),
-            label=labels,
-            color=node_colors,
-            hoverlabel=dict(
-                font=dict(color="black", size=13)
-            )
-        ),
-        link=dict(
-            source=source,
-            target=target,
-            value=value,
-            color=link_colors,
-            customdata=customdata,
-            hovertemplate=(
-                "Carrera elegida: %{customdata[0]}<br>"
-                "Carrera sugerida: %{customdata[1]}<br>"
-                "Estudiantes: %{customdata[2]}<br>"
-                "Porcentaje del total: %{customdata[3]}%<extra></extra>"
-            )
+        # --------------------------------------------
+        # Conteos por destino
+        # --------------------------------------------
+        flujos = (
+            sub.groupby('Destino_Compatible')
+            .size()
+            .reset_index(name='N')
+            .sort_values('N', ascending=False)
         )
-    )])
 
-    fig_sankey.update_layout(
-        title="Migración potencial de todas las carreras hacia Arquitectura",
-        font=dict(size=14, color="black", family="Arial"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        height=750
-    )
+        n_total = len(sub)
+        n_se_quedan = int((sub['Destino_Compatible'] == carrera_sel).sum())
+        n_migran = int((sub['Destino_Compatible'] != carrera_sel).sum())
 
-    st.plotly_chart(fig_sankey, use_container_width=True)
+        # --------------------------------------------
+        # Etiquetas de nodos
+        # --------------------------------------------
+        letras_origen_txt = ", ".join(letras_carrera(carrera_sel))
+        label_origen = [f"{carrera_sel}<br>Perfil esperado: {letras_origen_txt}<br>Total: {n_total}"]
 
+        label_destinos = []
+        for _, row in flujos.iterrows():
+            c = row['Destino_Compatible']
+            letras_dest = ", ".join(letras_carrera(c))
+            label_destinos.append(f"{c}<br>Perfil: {letras_dest}<br>Final: {row['N']}")
+
+        labels = label_origen + label_destinos
+
+        # Índices
+        source = [0] * len(flujos)
+        target = list(range(1, len(flujos) + 1))
+        value = flujos['N'].tolist()
+
+        # --------------------------------------------
+        # Colores
+        # --------------------------------------------
+        palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
+        destinos_unicos = flujos['Destino_Compatible'].tolist()
+
+        color_map_destino = {
+            carrera: palette[i % len(palette)]
+            for i, carrera in enumerate(destinos_unicos)
+        }
+
+        # La misma carrera en verde
+        color_map_destino[carrera_sel] = '#22c55e'
+
+        node_colors = ['#60a5fa'] + [color_map_destino[d] for d in flujos['Destino_Compatible']]
+        link_colors = [color_map_destino[d] for d in flujos['Destino_Compatible']]
+
+        porcentajes = (flujos['N'] / n_total * 100).round(1)
+
+        customdata = np.stack(
+            [
+                [carrera_sel] * len(flujos),
+                flujos['Destino_Compatible'],
+                flujos['N'],
+                porcentajes
+            ],
+            axis=-1
+        )
+
+        # --------------------------------------------
+        # Figura Sankey
+        # --------------------------------------------
+        fig_sankey = go.Figure(data=[go.Sankey(
+            arrangement="snap",
+            node=dict(
+                pad=20,
+                thickness=24,
+                line=dict(color="black", width=0.3),
+                label=labels,
+                color=node_colors,
+                hoverlabel=dict(font=dict(color="black", size=13))
+            ),
+            link=dict(
+                source=source,
+                target=target,
+                value=value,
+                color=link_colors,
+                customdata=customdata,
+                hovertemplate=(
+                    "Carrera elegida: %{customdata[0]}<br>"
+                    "Carrera sugerida compatible: %{customdata[1]}<br>"
+                    "Estudiantes: %{customdata[2]}<br>"
+                    "Porcentaje del total: %{customdata[3]}%<extra></extra>"
+                )
+            )
+        )])
+
+        fig_sankey.update_layout(
+            title=f"Transición vocacional compatible desde {carrera_sel}",
+            font=dict(size=14, color="black", family="Arial"),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            height=760
+        )
+
+        st.plotly_chart(fig_sankey, use_container_width=True)
+
+        # --------------------------------------------
+        # KPIs
+        # --------------------------------------------
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Total evaluado", n_total)
+        with c2:
+            st.metric("Se mantienen", f"{n_se_quedan} ({n_se_quedan / n_total * 100:.1f}%)")
+        with c3:
+            st.metric("Migrarían", f"{n_migran} ({n_migran / n_total * 100:.1f}%)")
+
+        # --------------------------------------------
+        # Resumen numérico
+        # --------------------------------------------
+        st.markdown("### Resumen numérico")
+        for _, row in flujos.iterrows():
+            pct = row['N'] / n_total * 100 if n_total else 0
+            st.markdown(
+                f"- **{carrera_sel} → {row['Destino_Compatible']}**: "
+                f"{row['N']} estudiantes ({pct:.1f}%)"
+            )
+
+        # --------------------------------------------
+        # Tabla de apoyo
+        # --------------------------------------------
+        st.markdown("### Detalle de estudiantes")
+        st.dataframe(
+            sub[[columna_nombre, columna_carrera, 'Destino_Compatible', 'Score_Origen', 'Score_Destino', 'Migra']]
+            .sort_values(['Migra', 'Score_Destino'], ascending=[False, False]),
+            use_container_width=True
+        )
 # ============================================
 # 📊 PRUEBA FINAL: error porcentual por letra CHASIDE
 #    Perfil en riesgo vs Jóvenes promesa

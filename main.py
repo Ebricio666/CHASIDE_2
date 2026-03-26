@@ -458,14 +458,6 @@ else:
 
     st.plotly_chart(fig_intensidad, use_container_width=True)
 
-    st.markdown("### Lectura sugerida de la escala")
-    st.markdown("""
-- **Sin perfil**: estudiantes con el nivel más bajo dentro del grupo amarillo.  
-- **Perfil en riesgo**: estudiantes cuyo perfil no va acorde con la carrera elegida, aunque con mejor puntaje relativo que el nivel anterior.  
-- **Perfil en transición**: estudiantes que sí muestran congruencia con la carrera, pero aún sin ubicarse en los niveles más altos del grupo verde.  
-- **Jóven promesa**: estudiantes en el cuartil superior del grupo verde, con el mejor ajuste vocacional relativo dentro de su carrera.  
-""")
-
 # ============================================
 # 🌊 Sankey global: migración hacia Arquitectura
 # ============================================
@@ -478,8 +470,6 @@ st.caption(
 )
 
 df_sankey = df.copy()
-
-# Excluir casos no útiles
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].isin([
         'Información no confiable',
@@ -487,16 +477,13 @@ df_sankey = df_sankey[
     ])
 ].copy()
 
-# Limpiar textos
 df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
 df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].astype(str).str.strip()
 
-# Solo perfiles únicos
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)
 ].copy()
 
-# Quedarse solo con quienes migrarían hacia Arquitectura
 df_sankey = df_sankey[
     (df_sankey['Carrera_Mejor_Perfilada'] == 'Arquitectura') &
     (df_sankey[columna_carrera] != 'Arquitectura')
@@ -505,9 +492,6 @@ df_sankey = df_sankey[
 if df_sankey.empty:
     st.info("No se encontraron estudiantes que migren hacia Arquitectura bajo este criterio.")
 else:
-    # --------------------------------------------
-    # Conteo por carrera de origen
-    # --------------------------------------------
     flujos = (
         df_sankey
         .groupby(columna_carrera)
@@ -517,24 +501,19 @@ else:
     )
 
     total_migran = flujos['N'].sum()
-
     carreras_origen = flujos[columna_carrera].tolist()
 
-    # Etiquetas
     labels_origen = [
         f"{carrera}<br>Origen: {n}"
         for carrera, n in zip(flujos[columna_carrera], flujos['N'])
     ]
     label_destino = [f"Arquitectura<br>Recibe: {total_migran}"]
-
     labels = labels_origen + label_destino
 
-    # Índices
     source = list(range(len(carreras_origen)))
     target = [len(carreras_origen)] * len(carreras_origen)
     value = flujos['N'].tolist()
 
-    # Colores por carrera de origen
     palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
     color_map_origen = {
         carrera: palette[i % len(palette)]
@@ -544,7 +523,6 @@ else:
     node_colors = [color_map_origen[c] for c in carreras_origen] + ['#22c55e']
     link_colors = [color_map_origen[c] for c in carreras_origen]
 
-    # Hover
     porcentajes = (flujos['N'] / total_migran * 100).round(1)
     customdata = np.stack(
         [
@@ -585,11 +563,7 @@ else:
 
     fig_sankey.update_layout(
         title="Migración potencial de todas las carreras hacia Arquitectura",
-        font=dict(
-            size=14,
-            color="black",
-            family="Arial"
-        ),
+        font=dict(size=14, color="black", family="Arial"),
         plot_bgcolor="white",
         paper_bgcolor="white",
         height=750
@@ -597,72 +571,58 @@ else:
 
     st.plotly_chart(fig_sankey, use_container_width=True)
 
-    # --------------------------------------------
-    # Resumen numérico
-    # --------------------------------------------
-    st.markdown("### Resumen numérico")
-    for _, row in flujos.iterrows():
-        pct = row['N'] / total_migran * 100 if total_migran else 0
-        st.markdown(
-            f"- **{row[columna_carrera]} → Arquitectura**: "
-            f"{row['N']} estudiantes ({pct:.1f}%)"
-        )
-
-    st.metric("Total que migraría hacia Arquitectura", total_migran)
-
 # ============================================
-# 📊 Prueba final: error porcentual por letra CHASIDE
-#    Perfil en riesgo vs Perfil en transición
+# 📊 PRUEBA FINAL: error porcentual por letra CHASIDE
+#    Perfil en riesgo vs Jóvenes promesa
 # ============================================
 st.header("📊 Error porcentual por letra CHASIDE")
 
 st.caption(
     "Seleccione una carrera para comparar el promedio del grupo 'Perfil en riesgo' "
-    "contra el promedio del grupo 'Perfil en transición'. "
+    "contra el promedio del grupo 'Jóven promesa'. "
     "El error porcentual indica qué letras CHASIDE requieren mayor fomento."
 )
 
 if 'df_intensidad' not in locals():
     st.warning("No se encontró la base de intensidad. Asegúrate de haber generado previamente 'df_intensidad'.")
 else:
-    # Base de trabajo
     df_error = df.copy()
 
     for a in areas:
         df_error[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
 
-    # Tomar la clasificación de intensidad ya calculada
+    # Alinear índices y niveles
     df_error = df_error.loc[df_intensidad.index].copy()
     df_error['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
-    df_error['Carrera'] = df[columna_carrera].loc[df_error.index].values
+    df_error['Carrera'] = df.loc[df_error.index, columna_carrera].values
 
-    # Selector de carrera
     carreras_disp = sorted(df_error['Carrera'].dropna().unique())
-    carrera_sel = st.selectbox("Seleccione una carrera:", carreras_disp)
+    carrera_sel = st.selectbox("Seleccione una carrera:", carreras_disp, key="select_error_chaside")
 
     sub = df_error[df_error['Carrera'] == carrera_sel].copy()
 
-    riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo']
-promesa = sub[sub['Nivel_Intensidad'] == 'Jóven promesa']
-if riesgo.empty or promesa.empty:    
-st.warning(
-            "No hay suficientes estudiantes en 'Perfil en riesgo' y 'Perfil en transición' "
+    riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo'].copy()
+    promesa = sub[sub['Nivel_Intensidad'] == 'Jóven promesa'].copy()
+
+    if riesgo.empty or promesa.empty:
+        st.warning(
+            "No hay suficientes estudiantes en 'Perfil en riesgo' y 'Jóven promesa' "
             "para esta carrera."
         )
     else:
         prom_riesgo = riesgo[areas].mean()
         prom_promesa = promesa[areas].mean()
+
         resultados = []
         for a in areas:
             meta = prom_promesa[a]
             medido = prom_riesgo[a]
-    
+
             if meta == 0:
                 error_pct = 0
             else:
                 error_pct = ((meta - medido) / meta) * 100
 
-            # Solo interesa el déficit real
             error_pct = max(error_pct, 0)
 
             resultados.append({
@@ -674,7 +634,6 @@ st.warning(
 
         df_plot = pd.DataFrame(resultados).sort_values('Error_Porcentual', ascending=False)
 
-        # Nombres largos opcionales para hover
         areas_long = {
             "C": "Administrativo",
             "H": "Humanidades y Sociales",
@@ -707,8 +666,8 @@ st.warning(
             hovertemplate=(
                 "<b>Letra:</b> %{x}<br>"
                 "<b>Área:</b> %{customdata[0]}<br>"
-                "<b>Valor meta (transición):</b> %{customdata[1]:.2f}<br>"
-                "<b>Valor medido (riesgo):</b> %{customdata[2]:.2f}<br>"
+                "<b>Valor meta (jóvenes promesa):</b> %{customdata[1]:.2f}<br>"
+                "<b>Valor medido (perfil en riesgo):</b> %{customdata[2]:.2f}<br>"
                 "<b>Error porcentual:</b> %{y:.2f}%<extra></extra>"
             ),
             customdata=np.stack(
@@ -723,14 +682,12 @@ st.warning(
 
         st.plotly_chart(fig_error, use_container_width=True)
 
-        # Tabla de apoyo
         st.markdown("### Resumen numérico")
         st.dataframe(
             df_plot[['Letra', 'Área', 'Meta', 'Medido', 'Error_Porcentual']],
             use_container_width=True
         )
 
-        # Interpretación rápida
         top3 = df_plot.head(3)
 
         st.markdown("### Áreas prioritarias por atender")

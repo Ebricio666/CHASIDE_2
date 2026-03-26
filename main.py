@@ -643,22 +643,20 @@ else:
     sub = df_error[df_error['Carrera'] == carrera_sel].copy()
 
     riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo']
-    transicion = sub[sub['Nivel_Intensidad'] == 'Perfil en transición']
-
-    if riesgo.empty or transicion.empty:
-        st.warning(
+promesa = sub[sub['Nivel_Intensidad'] == 'Jóven promesa']
+if riesgo.empty or promesa.empty:    
+st.warning(
             "No hay suficientes estudiantes en 'Perfil en riesgo' y 'Perfil en transición' "
             "para esta carrera."
         )
     else:
         prom_riesgo = riesgo[areas].mean()
-        prom_transicion = transicion[areas].mean()
-
+        prom_promesa = promesa[areas].mean()
         resultados = []
         for a in areas:
-            meta = prom_transicion[a]
+            meta = prom_promesa[a]
             medido = prom_riesgo[a]
-
+    
             if meta == 0:
                 error_pct = 0
             else:

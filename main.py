@@ -468,17 +468,19 @@ else:
 
 # ============================================
 # 🌊 Sankey por carrera seleccionada
+#    Solo estudiantes cuya carrera sugerida es distinta
 # ============================================
 st.header("🌊 Transición vocacional por carrera")
 
 st.caption(
-    "Seleccione una carrera para visualizar cómo se redistribuyen sus estudiantes "
-    "hacia la misma carrera u otras opciones con mejor ajuste según CHASIDE. "
+    "Seleccione una carrera para visualizar únicamente a los estudiantes que eligieron una carrera, "
+    "pero cuyo perfil CHASIDE sugiere otra opción con mejor ajuste. "
     "Solo se consideran estudiantes con una carrera sugerida única."
 )
 
 df_sankey = df.copy()
 
+# Excluir casos no útiles
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].isin([
         'Información no confiable',
@@ -486,10 +488,11 @@ df_sankey = df_sankey[
     ])
 ].copy()
 
+# Limpiar textos
 df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
 df_sankey['Carrera_Mejor_Perfilada'] = df_sankey['Carrera_Mejor_Perfilada'].astype(str).str.strip()
 
-# solo perfiles únicos
+# Solo perfiles únicos
 df_sankey = df_sankey[
     ~df_sankey['Carrera_Mejor_Perfilada'].str.contains(',', regex=False)
 ].copy()
@@ -505,132 +508,132 @@ else:
     if sub.empty:
         st.warning("No hay estudiantes con perfil único para esta carrera.")
     else:
-        destinos = (
-            sub.groupby('Carrera_Mejor_Perfilada')
-            .size()
-            .reset_index(name='N')
-            .sort_values('N', ascending=False)
-        )
+        # --------------------------------------------
+        # Quedarse SOLO con quienes migrarían
+        # --------------------------------------------
+        sub = sub[sub['Carrera_Mejor_Perfilada'] != carrera_sel].copy()
 
-        n_inicial = len(sub)
-
-        palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
-        carreras_unicas_destino = destinos['Carrera_Mejor_Perfilada'].tolist()
-
-        color_map_destino = {
-            carrera: palette[i % len(palette)]
-            for i, carrera in enumerate(carreras_unicas_destino)
-        }
-        color_map_destino[carrera_sel] = '#22c55e'
-
-        label_origen = [f"{carrera_sel}<br>Inicial: {n_inicial}"]
-        label_destinos = [
-            f"{row['Carrera_Mejor_Perfilada']}<br>Final: {row['N']}"
-            for _, row in destinos.iterrows()
-        ]
-        labels = label_origen + label_destinos
-
-        source = [0] * len(destinos)
-        target = list(range(1, len(destinos) + 1))
-        value = destinos['N'].tolist()
-
-        porcentaje_destino = (destinos['N'] / n_inicial * 100).round(1)
-
-        customdata = np.stack(
-            [
-                [carrera_sel] * len(destinos),
-                destinos['Carrera_Mejor_Perfilada'],
-                destinos['N'],
-                porcentaje_destino
-            ],
-            axis=-1
-        )
-
-        node_colors = ['#60a5fa'] + [
-            color_map_destino[dest]
-            for dest in destinos['Carrera_Mejor_Perfilada']
-        ]
-
-        link_colors = [
-            color_map_destino[dest]
-            for dest in destinos['Carrera_Mejor_Perfilada']
-        ]
-
-        title_text = f"Transición vocacional desde {carrera_sel}"
-
-        fig_sankey = go.Figure(data=[go.Sankey(
-            arrangement="snap",
-            node=dict(
-                pad=20,
-                thickness=22,
-                line=dict(color="black", width=0.3),
-                label=labels,
-                color=node_colors,
-                hoverlabel=dict(
-                    font=dict(color="black", size=13)
-                )
-            ),
-            link=dict(
-                source=source,
-                target=target,
-                value=value,
-                color=link_colors,
-                customdata=customdata,
-                hovertemplate=(
-                    "Carrera elegida: %{customdata[0]}<br>"
-                    "Carrera sugerida: %{customdata[1]}<br>"
-                    "Estudiantes: %{customdata[2]}<br>"
-                    "Porcentaje: %{customdata[3]}%<extra></extra>"
-                )
-            )
-        )])
-
-        fig_sankey.update_layout(
-            title=title_text,
-            font=dict(
-                size=14,
-                color="black",
-                family="Arial"
-            ),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            height=700
-        )
-
-        st.plotly_chart(fig_sankey, use_container_width=True)
-
-        # KPIs
-        mismos = int(destinos.loc[destinos['Carrera_Mejor_Perfilada'] == carrera_sel, 'N'].sum()) if carrera_sel in destinos['Carrera_Mejor_Perfilada'].values else 0
-        migran = n_inicial - mismos
-        pct_mismos = (mismos / n_inicial * 100) if n_inicial else 0
-        pct_migran = (migran / n_inicial * 100) if n_inicial else 0
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total con perfil único", n_inicial)
-        with col2:
-            st.metric("Se mantienen", f"{mismos} ({pct_mismos:.1f}%)")
-        with col3:
-            st.metric("Migrarían", f"{migran} ({pct_migran:.1f}%)")
-
-        st.markdown("### Resumen numérico")
-        for _, row in destinos.iterrows():
-            pct = row['N'] / n_inicial * 100 if n_inicial else 0
-            st.markdown(
-                f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: "
-                f"{row['N']} estudiantes ({pct:.1f}%)"
-            )
-
-        # Detectar fuga
-        if migran > mismos:
-            st.warning(
-                f"⚠️ En **{carrera_sel}** hay mayor tendencia a migrar ({migran}) que a permanecer ({mismos})."
+        if sub.empty:
+            st.success(
+                f"Todos los estudiantes con perfil único de {carrera_sel} coinciden con la carrera elegida."
             )
         else:
-            st.success(
-                f"✅ En **{carrera_sel}** predomina la permanencia vocacional ({mismos}) sobre la migración ({migran})."
+            destinos = (
+                sub.groupby('Carrera_Mejor_Perfilada')
+                .size()
+                .reset_index(name='N')
+                .sort_values('N', ascending=False)
             )
 
-        st.caption(
-            f"Total analizado en {carrera_sel}: {n_inicial} estudiantes con carrera sugerida única."
-        )
+            n_migran = len(sub)
+
+            # Colores sólidos por destino
+            palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
+            carreras_unicas_destino = destinos['Carrera_Mejor_Perfilada'].tolist()
+
+            color_map_destino = {
+                carrera: palette[i % len(palette)]
+                for i, carrera in enumerate(carreras_unicas_destino)
+            }
+
+            # Etiquetas
+            label_origen = [f"{carrera_sel}<br>Migran: {n_migran}"]
+            label_destinos = [
+                f"{row['Carrera_Mejor_Perfilada']}<br>Recibe: {row['N']}"
+                for _, row in destinos.iterrows()
+            ]
+            labels = label_origen + label_destinos
+
+            # Índices
+            source = [0] * len(destinos)
+            target = list(range(1, len(destinos) + 1))
+            value = destinos['N'].tolist()
+
+            porcentaje_destino = (destinos['N'] / n_migran * 100).round(1)
+
+            customdata = np.stack(
+                [
+                    [carrera_sel] * len(destinos),
+                    destinos['Carrera_Mejor_Perfilada'],
+                    destinos['N'],
+                    porcentaje_destino
+                ],
+                axis=-1
+            )
+
+            node_colors = ['#60a5fa'] + [
+                color_map_destino[dest]
+                for dest in destinos['Carrera_Mejor_Perfilada']
+            ]
+
+            link_colors = [
+                color_map_destino[dest]
+                for dest in destinos['Carrera_Mejor_Perfilada']
+            ]
+
+            fig_sankey = go.Figure(data=[go.Sankey(
+                arrangement="snap",
+                node=dict(
+                    pad=20,
+                    thickness=22,
+                    line=dict(color="black", width=0.3),
+                    label=labels,
+                    color=node_colors,
+                    hoverlabel=dict(
+                        font=dict(color="black", size=13)
+                    )
+                ),
+                link=dict(
+                    source=source,
+                    target=target,
+                    value=value,
+                    color=link_colors,
+                    customdata=customdata,
+                    hovertemplate=(
+                        "Carrera elegida: %{customdata[0]}<br>"
+                        "Carrera sugerida: %{customdata[1]}<br>"
+                        "Estudiantes: %{customdata[2]}<br>"
+                        "Porcentaje: %{customdata[3]}%<extra></extra>"
+                    )
+                )
+            )])
+
+            fig_sankey.update_layout(
+                title=f"Estudiantes de {carrera_sel} cuyo perfil sugiere otra carrera",
+                font=dict(
+                    size=14,
+                    color="black",
+                    family="Arial"
+                ),
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                height=700
+            )
+
+            st.plotly_chart(fig_sankey, use_container_width=True)
+
+            # KPIs
+            total_unicos = len(
+                df_sankey[df_sankey[columna_carrera] == carrera_sel]
+            )
+            pct_migran_total = (n_migran / total_unicos * 100) if total_unicos else 0
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total con perfil único", total_unicos)
+            with col2:
+                st.metric("Migrarían a otra carrera", f"{n_migran} ({pct_migran_total:.1f}%)")
+
+            st.markdown("### Resumen numérico")
+            for _, row in destinos.iterrows():
+                pct = row['N'] / n_migran * 100 if n_migran else 0
+                st.markdown(
+                    f"- **{carrera_sel} → {row['Carrera_Mejor_Perfilada']}**: "
+                    f"{row['N']} estudiantes ({pct:.1f}% de quienes migrarían)"
+                )
+
+            principal_destino = destinos.iloc[0]
+            st.info(
+                f"La principal carrera sugerida para estudiantes de **{carrera_sel}** es "
+                f"**{principal_destino['Carrera_Mejor_Perfilada']}**, con **{principal_destino['N']}** estudiantes."
+            )

@@ -609,3 +609,133 @@ else:
         )
 
     st.metric("Total que migraría hacia Arquitectura", total_migran)
+
+# ============================================
+# 📊 Prueba final: áreas CHASIDE a fomentar
+#    Perfil en riesgo vs Perfil en transición
+# ============================================
+st.header("📊 Áreas CHASIDE prioritarias por atender")
+
+st.caption(
+    "Para cada carrera, se toma como valor meta el promedio de las letras CHASIDE del grupo "
+    "'Perfil en transición' y como valor medido el promedio del grupo 'Perfil en riesgo'. "
+    "A partir del error porcentual normalizado se identifica qué áreas requieren mayor fomento."
+)
+
+# Verificación
+if 'df_intensidad' not in locals():
+    st.warning("No se encontró la base de intensidad. Asegúrate de haber generado previamente 'df_intensidad'.")
+else:
+    # Crear base de trabajo con totales CHASIDE
+    df_prioridad = df.copy()
+
+    for a in areas:
+        df_prioridad[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
+
+    # Añadir niveles de intensidad ya calculados
+    df_prioridad = df_prioridad.loc[df_intensidad.index].copy()
+    df_prioridad['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
+    df_prioridad['Carrera'] = df[columna_carrera].loc[df_prioridad.index].values
+
+    areas_long = {
+        "C": "Administrativo",
+        "H": "Humanidades y Sociales",
+        "A": "Artístico",
+        "S": "Ciencias de la Salud",
+        "I": "Enseñanzas Técnicas",
+        "D": "Defensa y Seguridad",
+        "E": "Ciencias Experimentales"
+    }
+
+    resultados = []
+
+    for carrera_sel in sorted(df_prioridad['Carrera'].dropna().unique()):
+        sub = df_prioridad[df_prioridad['Carrera'] == carrera_sel].copy()
+
+        riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo']
+        transicion = sub[sub['Nivel_Intensidad'] == 'Perfil en transición']
+
+        if riesgo.empty or transicion.empty:
+            continue
+
+        prom_riesgo = riesgo[areas].mean()
+        prom_transicion = transicion[areas].mean()
+
+        for a in areas:
+            meta = prom_transicion[a]
+            medido = prom_riesgo[a]
+
+            if meta == 0:
+                error_pct = 0
+            else:
+                error_pct = ((meta - medido) / meta) * 100
+
+            # Solo nos interesa déficit real
+            error_pct = max(error_pct, 0)
+
+            resultados.append({
+                'Carrera': carrera_sel,
+                'Área': areas_long[a],
+                'Letra': a,
+                'Meta': meta,
+                'Medido': medido,
+                'Error_Porcentual': error_pct
+            })
+
+    df_error = pd.DataFrame(resultados)
+
+    if df_error.empty:
+        st.info("No hay suficientes datos para comparar 'Perfil en riesgo' vs 'Perfil en transición'.")
+    else:
+        # Normalizar dentro de cada carrera
+        df_error['Error_Normalizado'] = (
+            df_error.groupby('Carrera')['Error_Porcentual']
+            .transform(lambda x: 0 if x.sum() == 0 else (x / x.sum() * 100))
+        )
+
+        # Orden opcional por suma de error total
+        orden_carreras = (
+            df_error.groupby('Carrera')['Error_Porcentual']
+            .sum()
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+
+        fig_prioridad = px.bar(
+            df_error,
+            x='Carrera',
+            y='Error_Normalizado',
+            color='Área',
+            barmode='stack',
+            category_orders={'Carrera': orden_carreras},
+            text=df_error['Error_Normalizado'].round(1).astype(str) + '%',
+            title="Distribución relativa de áreas CHASIDE prioritarias por carrera"
+        )
+
+        fig_prioridad.update_layout(
+            xaxis_title="Carrera",
+            yaxis_title="Prioridad relativa de atención (%)",
+            xaxis_tickangle=-30,
+            height=760,
+            legend_title_text="Área CHASIDE"
+        )
+
+        fig_prioridad.update_traces(
+            hovertemplate=(
+                "<b>Carrera:</b> %{x}<br>"
+                "<b>Área:</b> %{fullData.name}<br>"
+                "<b>Prioridad relativa:</b> %{y:.1f}%<br>"
+                "<extra></extra>"
+            )
+        )
+
+        st.plotly_chart(fig_prioridad, use_container_width=True)
+
+        # Tabla de apoyo
+        st.markdown("### Resumen numérico por carrera")
+        resumen_tabla = df_error.sort_values(['Carrera', 'Error_Porcentual'], ascending=[True, False]).copy()
+        st.dataframe(
+            resumen_tabla[['Carrera', 'Área', 'Meta', 'Medido', 'Error_Porcentual', 'Error_Normalizado']],
+            use_container_width=True
+        )

@@ -611,56 +611,50 @@ else:
     st.metric("Total que migraría hacia Arquitectura", total_migran)
 
 # ============================================
-# 📊 Prueba final: áreas CHASIDE a fomentar
+# 📊 Prueba final: error porcentual por letra CHASIDE
 #    Perfil en riesgo vs Perfil en transición
 # ============================================
-st.header("📊 Áreas CHASIDE prioritarias por atender")
+st.header("📊 Error porcentual por letra CHASIDE")
 
 st.caption(
-    "Para cada carrera, se toma como valor meta el promedio de las letras CHASIDE del grupo "
-    "'Perfil en transición' y como valor medido el promedio del grupo 'Perfil en riesgo'. "
-    "A partir del error porcentual normalizado se identifica qué áreas requieren mayor fomento."
+    "Seleccione una carrera para comparar el promedio del grupo 'Perfil en riesgo' "
+    "contra el promedio del grupo 'Perfil en transición'. "
+    "El error porcentual indica qué letras CHASIDE requieren mayor fomento."
 )
 
-# Verificación
 if 'df_intensidad' not in locals():
     st.warning("No se encontró la base de intensidad. Asegúrate de haber generado previamente 'df_intensidad'.")
 else:
-    # Crear base de trabajo con totales CHASIDE
-    df_prioridad = df.copy()
+    # Base de trabajo
+    df_error = df.copy()
 
     for a in areas:
-        df_prioridad[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
+        df_error[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
 
-    # Añadir niveles de intensidad ya calculados
-    df_prioridad = df_prioridad.loc[df_intensidad.index].copy()
-    df_prioridad['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
-    df_prioridad['Carrera'] = df[columna_carrera].loc[df_prioridad.index].values
+    # Tomar la clasificación de intensidad ya calculada
+    df_error = df_error.loc[df_intensidad.index].copy()
+    df_error['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
+    df_error['Carrera'] = df[columna_carrera].loc[df_error.index].values
 
-    areas_long = {
-        "C": "Administrativo",
-        "H": "Humanidades y Sociales",
-        "A": "Artístico",
-        "S": "Ciencias de la Salud",
-        "I": "Enseñanzas Técnicas",
-        "D": "Defensa y Seguridad",
-        "E": "Ciencias Experimentales"
-    }
+    # Selector de carrera
+    carreras_disp = sorted(df_error['Carrera'].dropna().unique())
+    carrera_sel = st.selectbox("Seleccione una carrera:", carreras_disp)
 
-    resultados = []
+    sub = df_error[df_error['Carrera'] == carrera_sel].copy()
 
-    for carrera_sel in sorted(df_prioridad['Carrera'].dropna().unique()):
-        sub = df_prioridad[df_prioridad['Carrera'] == carrera_sel].copy()
+    riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo']
+    transicion = sub[sub['Nivel_Intensidad'] == 'Perfil en transición']
 
-        riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo']
-        transicion = sub[sub['Nivel_Intensidad'] == 'Perfil en transición']
-
-        if riesgo.empty or transicion.empty:
-            continue
-
+    if riesgo.empty or transicion.empty:
+        st.warning(
+            "No hay suficientes estudiantes en 'Perfil en riesgo' y 'Perfil en transición' "
+            "para esta carrera."
+        )
+    else:
         prom_riesgo = riesgo[areas].mean()
         prom_transicion = transicion[areas].mean()
 
+        resultados = []
         for a in areas:
             meta = prom_transicion[a]
             medido = prom_riesgo[a]
@@ -670,72 +664,79 @@ else:
             else:
                 error_pct = ((meta - medido) / meta) * 100
 
-            # Solo nos interesa déficit real
+            # Solo interesa el déficit real
             error_pct = max(error_pct, 0)
 
             resultados.append({
-                'Carrera': carrera_sel,
-                'Área': areas_long[a],
                 'Letra': a,
                 'Meta': meta,
                 'Medido': medido,
                 'Error_Porcentual': error_pct
             })
 
-    df_error = pd.DataFrame(resultados)
+        df_plot = pd.DataFrame(resultados).sort_values('Error_Porcentual', ascending=False)
 
-    if df_error.empty:
-        st.info("No hay suficientes datos para comparar 'Perfil en riesgo' vs 'Perfil en transición'.")
-    else:
-        # Normalizar dentro de cada carrera
-        df_error['Error_Normalizado'] = (
-            df_error.groupby('Carrera')['Error_Porcentual']
-            .transform(lambda x: 0 if x.sum() == 0 else (x / x.sum() * 100))
+        # Nombres largos opcionales para hover
+        areas_long = {
+            "C": "Administrativo",
+            "H": "Humanidades y Sociales",
+            "A": "Artístico",
+            "S": "Ciencias de la Salud",
+            "I": "Enseñanzas Técnicas",
+            "D": "Defensa y Seguridad",
+            "E": "Ciencias Experimentales"
+        }
+
+        df_plot['Área'] = df_plot['Letra'].map(areas_long)
+
+        fig_error = px.bar(
+            df_plot,
+            x='Letra',
+            y='Error_Porcentual',
+            color='Letra',
+            text=df_plot['Error_Porcentual'].round(1).astype(str) + '%',
+            title=f"Error porcentual por letra CHASIDE – {carrera_sel}"
         )
 
-        # Orden opcional por suma de error total
-        orden_carreras = (
-            df_error.groupby('Carrera')['Error_Porcentual']
-            .sum()
-            .sort_values(ascending=False)
-            .index
-            .tolist()
+        fig_error.update_layout(
+            xaxis_title="Letra CHASIDE",
+            yaxis_title="Error porcentual (%)",
+            showlegend=False,
+            height=620
         )
 
-        fig_prioridad = px.bar(
-            df_error,
-            x='Carrera',
-            y='Error_Normalizado',
-            color='Área',
-            barmode='stack',
-            category_orders={'Carrera': orden_carreras},
-            text=df_error['Error_Normalizado'].round(1).astype(str) + '%',
-            title="Distribución relativa de áreas CHASIDE prioritarias por carrera"
-        )
-
-        fig_prioridad.update_layout(
-            xaxis_title="Carrera",
-            yaxis_title="Prioridad relativa de atención (%)",
-            xaxis_tickangle=-30,
-            height=760,
-            legend_title_text="Área CHASIDE"
-        )
-
-        fig_prioridad.update_traces(
+        fig_error.update_traces(
             hovertemplate=(
-                "<b>Carrera:</b> %{x}<br>"
-                "<b>Área:</b> %{fullData.name}<br>"
-                "<b>Prioridad relativa:</b> %{y:.1f}%<br>"
-                "<extra></extra>"
+                "<b>Letra:</b> %{x}<br>"
+                "<b>Área:</b> %{customdata[0]}<br>"
+                "<b>Valor meta (transición):</b> %{customdata[1]:.2f}<br>"
+                "<b>Valor medido (riesgo):</b> %{customdata[2]:.2f}<br>"
+                "<b>Error porcentual:</b> %{y:.2f}%<extra></extra>"
+            ),
+            customdata=np.stack(
+                [
+                    df_plot['Área'],
+                    df_plot['Meta'],
+                    df_plot['Medido']
+                ],
+                axis=-1
             )
         )
 
-        st.plotly_chart(fig_prioridad, use_container_width=True)
+        st.plotly_chart(fig_error, use_container_width=True)
 
         # Tabla de apoyo
-        st.markdown("### Resumen numérico por carrera")
-        resumen_tabla = df_error.sort_values(['Carrera', 'Error_Porcentual'], ascending=[True, False]).copy()
+        st.markdown("### Resumen numérico")
         st.dataframe(
-            resumen_tabla[['Carrera', 'Área', 'Meta', 'Medido', 'Error_Porcentual', 'Error_Normalizado']],
+            df_plot[['Letra', 'Área', 'Meta', 'Medido', 'Error_Porcentual']],
             use_container_width=True
         )
+
+        # Interpretación rápida
+        top3 = df_plot.head(3)
+
+        st.markdown("### Áreas prioritarias por atender")
+        for _, row in top3.iterrows():
+            st.markdown(
+                f"- **{row['Letra']} ({row['Área']})**: error porcentual de **{row['Error_Porcentual']:.2f}%**"
+            )

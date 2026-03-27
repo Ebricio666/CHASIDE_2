@@ -143,8 +143,8 @@ def carrera_mejor(r):
     a = r['Area_Fuerte_Ponderada']
     sugeridas = [c for c, p in perfil_carreras.items() if a in p.get('Fuerte', [])]
     return (
-        r[columna_carrera]
-        if r[columna_carrera] in sugeridas
+        str(r[columna_carrera]).strip()
+        if str(r[columna_carrera]).strip() in sugeridas
         else (', '.join(sugeridas) if sugeridas else 'Sin sugerencia clara')
     )
 
@@ -180,6 +180,25 @@ def semaforo(r):
 df['Carrera_Mejor_Perfilada'] = df.apply(carrera_mejor, axis=1)
 df['Diagnóstico Primario Vocacional'] = df.apply(diagnostico, axis=1)
 df['Semáforo Vocacional'] = df.apply(semaforo, axis=1)
+
+# ============================================
+# 📌 UTILIDADES DE VISUALIZACIÓN
+# ============================================
+df['Carrera_Corta'] = (
+    df[columna_carrera]
+    .astype(str)
+    .str.replace('Ingeniería', 'Ing.', regex=False)
+)
+
+areas_long = {
+    "C": "Administrativo",
+    "H": "Humanidades y Sociales",
+    "A": "Artístico",
+    "S": "Ciencias de la Salud",
+    "I": "Enseñanzas Técnicas",
+    "D": "Defensa y Seguridad",
+    "E": "Ciencias Experimentales"
+}
 
 # ============================================
 # 📌 DISTRIBUCIÓN DE RESPUESTAS DEL ESTUDIANTADO
@@ -218,7 +237,6 @@ resumen['Categoría'] = pd.Categorical(
 )
 resumen = resumen.sort_values('Categoría')
 
-# Calcular porcentajes
 total_estudiantes = int(resumen['N'].sum())
 resumen['Porcentaje'] = np.where(
     total_estudiantes == 0,
@@ -260,9 +278,6 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ============================================
-# 📌 REPORTE AUTOMÁTICO DEL DIAGRAMA DE PASTEL
-# ============================================
 conteos = resumen.set_index('Categoría')['N'].to_dict()
 porcentajes = resumen.set_index('Categoría')['Porcentaje'].to_dict()
 
@@ -278,9 +293,8 @@ p_sin_prioritario = porcentajes.get('No se observa un perfil prioritario', 0)
 n_azar = conteos.get('Respondió siempre igual', 0)
 p_azar = porcentajes.get('Respondió siempre igual', 0)
 
-("### 📝 Reporte del diagnóstico general")
-
-(
+st.markdown("### 📝 Reporte del diagnóstico general")
+st.markdown(
     f"""
 Esta escala tuvo una participación de **{total_estudiantes} estudiantes**. 
 De ellos, **{n_coincide} ({p_coincide:.1f}%)** muestran que el perfil CHASIDE 
@@ -296,6 +310,7 @@ Finalmente, **{n_azar} ({p_azar:.1f}%)** fueron clasificados como **respondió s
 por lo que sus respuestas deben interpretarse con cautela al no ofrecer evidencia suficiente de un perfil vocacional confiable.
 """
 )
+
 # ============================================
 # 📊 Distribución por carrera y categoría
 # ============================================
@@ -306,7 +321,6 @@ st.caption(
     "de cada programa educativo respecto a su ajuste vocacional."
 )
 
-# Etiquetas largas para visualización
 mapa_categorias_barras = {
     'Verde': 'El perfil coincide con la carrera elegida',
     'Amarillo': 'El perfil NO va acorde con la carrera elegida',
@@ -315,16 +329,8 @@ mapa_categorias_barras = {
     'Rojo': 'No se observa un perfil prioritario'
 }
 
-# Copia de trabajo
 df_barras = df.copy()
 df_barras['Categoría_Barras'] = df_barras['Semáforo Vocacional'].replace(mapa_categorias_barras)
-
-# Abreviar "Ingeniería" por "Ing."
-df_barras['Carrera_Corta'] = (
-    df_barras[columna_carrera]
-    .astype(str)
-    .str.replace('Ingeniería', 'Ing.', regex=False)
-)
 
 cats_order_largo = [
     'El perfil coincide con la carrera elegida',
@@ -428,19 +434,14 @@ else:
 
 st.plotly_chart(fig_stacked, use_container_width=True)
 
-# ============================================
-# 📝 REPORTE AUTOMÁTICO DEL SUBMÓDULO
-# ============================================
-("### 📝 Reporte por carrera")
+st.markdown("### 📝 Reporte por carrera")
 
-# Tabla base por carrera con categorías ya unificadas
 resumen_carreras = (
     df_barras.groupby(['Carrera_Corta', 'Categoría_Barras'])
     .size()
     .unstack(fill_value=0)
 )
 
-# Asegurar columnas
 for c in cats_order_largo:
     if c not in resumen_carreras.columns:
         resumen_carreras[c] = 0
@@ -448,7 +449,6 @@ for c in cats_order_largo:
 resumen_carreras = resumen_carreras[cats_order_largo].copy()
 resumen_carreras['Total'] = resumen_carreras.sum(axis=1)
 
-# Porcentajes
 for c in cats_order_largo:
     resumen_carreras[f'%_{c}'] = np.where(
         resumen_carreras['Total'] == 0,
@@ -456,19 +456,16 @@ for c in cats_order_largo:
         resumen_carreras[c] / resumen_carreras['Total'] * 100
     )
 
-# Top 2 verde
 top_verde = resumen_carreras.sort_values(
     by='El perfil coincide con la carrera elegida',
     ascending=False
 ).head(2)
 
-# Top 2 amarillo
 top_amarillo = resumen_carreras.sort_values(
     by='El perfil NO va acorde con la carrera elegida',
     ascending=False
 ).head(2)
 
-# Top 2 rojo/no prioritario
 top_rojo = resumen_carreras.sort_values(
     by='No se observa un perfil prioritario',
     ascending=False
@@ -494,6 +491,7 @@ for carrera, row in top_rojo.iterrows():
         f"- **{carrera}**: {int(row['No se observa un perfil prioritario'])} estudiantes "
         f"({row['%_No se observa un perfil prioritario']:.1f}%) sin un perfil prioritario claramente definido."
     )
+
 # ============================================
 # 📊 Intensidad del perfil vocacional por carrera
 # ============================================
@@ -509,14 +507,6 @@ st.caption(
 df_intensidad = df.copy()
 df_intensidad['Score'] = df_intensidad[[f'PUNTAJE_COMBINADO_{a}' for a in areas]].max(axis=1)
 
-# Abreviar carreras
-df_intensidad['Carrera_Corta'] = (
-    df_intensidad[columna_carrera]
-    .astype(str)
-    .str.replace('Ingeniería', 'Ing.', regex=False)
-)
-
-# Solo Verde y Amarillo
 df_intensidad = df_intensidad[
     df_intensidad['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])
 ].copy()
@@ -531,7 +521,6 @@ else:
         amar = grupo[grupo['Semáforo Vocacional'] == 'Amarillo'].copy()
         ver = grupo[grupo['Semáforo Vocacional'] == 'Verde'].copy()
 
-        # Amarillo → 2 niveles
         if len(amar) > 0:
             amar = amar.sort_values('Score', ascending=True).copy()
             amar['rank_pct'] = (np.arange(len(amar)) + 1) / len(amar)
@@ -543,7 +532,6 @@ else:
             )
             grupo.loc[amar.index, 'Nivel_Intensidad'] = amar['Nivel_Intensidad']
 
-        # Verde → 2 niveles
         if len(ver) > 0:
             ver = ver.sort_values('Score', ascending=True).copy()
             ver['rank_pct'] = (np.arange(len(ver)) + 1) / len(ver)
@@ -652,9 +640,8 @@ else:
 
     st.plotly_chart(fig_intensidad, use_container_width=True)
 
-    # Interpretación
     st.markdown("### Lectura sugerida de la escala")
-st.markdown("""
+    st.markdown("""
 - **Sin perfil**: estudiantes cuya elección de carrera no muestra correspondencia con su perfil vocacional. 
 Se recomienda una reevaluación vocacional y posible cambio de carrera.
 
@@ -668,9 +655,9 @@ aunque aún en proceso de consolidación. Se espera un bajo nivel de no acredita
 - **Jóven promesa**: estudiantes con una alta congruencia entre su perfil vocacional y la carrera elegida, 
 lo que favorece un desempeño académico sólido y sostenido.
 """)
+
 # ============================================
-# 🌊 Sankey vocacional por carrera
-#    Carrera elegida vs carrera con mejor ajuste compatible
+# 🌊 Transición vocacional compatible por carrera
 # ============================================
 st.header("🌊 Transición vocacional compatible por carrera")
 
@@ -680,21 +667,13 @@ st.caption(
     "Solo se consideran transiciones razonables entre carreras con al menos dos letras CHASIDE en común."
 )
 
-# --------------------------------------------
-# Base para Sankey
-# --------------------------------------------
 df_sankey = df.copy()
-
-# Excluir respuestas poco confiables
 df_sankey = df_sankey[
     ~df_sankey['Semáforo Vocacional'].isin(['Respondió siempre igual'])
 ].copy()
 
 df_sankey[columna_carrera] = df_sankey[columna_carrera].astype(str).str.strip()
 
-# --------------------------------------------
-# Funciones auxiliares
-# --------------------------------------------
 def letras_carrera(carrera):
     perfil = perfil_carreras.get(str(carrera).strip(), {})
     return perfil.get('Fuerte', [])
@@ -716,17 +695,12 @@ def carreras_compatibles(carrera_origen):
         letras_destino = set(letras_carrera(carrera_destino))
         inter = letras_origen.intersection(letras_destino)
 
-        # Compatibilidad mínima: al menos 2 letras en común
         if len(inter) >= 2:
             compatibles.append(carrera_destino)
 
     return compatibles
 
 def mejor_destino_compatible(row, carrera_origen):
-    """
-    Devuelve la mejor carrera compatible para el estudiante.
-    Si ninguna mejora el ajuste respecto a la carrera elegida, se queda en la misma.
-    """
     score_origen = puntaje_promedio_carrera(row, carrera_origen)
     candidatas = carreras_compatibles(carrera_origen)
 
@@ -739,44 +713,22 @@ def mejor_destino_compatible(row, carrera_origen):
             mejor_score = score_c
             mejor_carrera = c
 
-    return mejor_carrera, score_origen, mejor_score
+    return mejor_carrera
 
-# --------------------------------------------
-# Selector de carrera
-# --------------------------------------------
 carreras_disp = sorted(df_sankey[columna_carrera].dropna().unique())
 
 if not carreras_disp:
     st.info("No hay carreras disponibles para construir el Sankey.")
 else:
-    carrera_sel = st.selectbox("Seleccione la carrera de origen:", carreras_disp)
+    carrera_sel = st.selectbox("Seleccione la carrera de origen:", carreras_disp, key="sankey_carrera_origen")
 
     sub = df_sankey[df_sankey[columna_carrera] == carrera_sel].copy()
 
     if sub.empty:
         st.warning("No hay estudiantes para esta carrera.")
     else:
-        # --------------------------------------------
-        # Calcular destino compatible estudiante por estudiante
-        # --------------------------------------------
-        destinos = []
-        score_origen_list = []
-        score_destino_list = []
+        sub['Destino_Compatible'] = sub.apply(lambda row: mejor_destino_compatible(row, carrera_sel), axis=1)
 
-        for _, row in sub.iterrows():
-            destino, score_origen, score_destino = mejor_destino_compatible(row, carrera_sel)
-            destinos.append(destino)
-            score_origen_list.append(score_origen)
-            score_destino_list.append(score_destino)
-
-        sub['Destino_Compatible'] = destinos
-        sub['Score_Origen'] = score_origen_list
-        sub['Score_Destino'] = score_destino_list
-        sub['Migra'] = sub['Destino_Compatible'] != carrera_sel
-
-        # --------------------------------------------
-        # Conteos por destino
-        # --------------------------------------------
         flujos = (
             sub.groupby('Destino_Compatible')
             .size()
@@ -785,12 +737,7 @@ else:
         )
 
         n_total = len(sub)
-        n_se_quedan = int((sub['Destino_Compatible'] == carrera_sel).sum())
-        n_migran = int((sub['Destino_Compatible'] != carrera_sel).sum())
 
-        # --------------------------------------------
-        # Etiquetas de nodos
-        # --------------------------------------------
         letras_origen_txt = ", ".join(letras_carrera(carrera_sel))
         label_origen = [f"{carrera_sel}<br>Perfil esperado: {letras_origen_txt}<br>Total: {n_total}"]
 
@@ -802,14 +749,10 @@ else:
 
         labels = label_origen + label_destinos
 
-        # Índices
         source = [0] * len(flujos)
         target = list(range(1, len(flujos) + 1))
         value = flujos['N'].tolist()
 
-        # --------------------------------------------
-        # Colores
-        # --------------------------------------------
         palette = px.colors.qualitative.Bold + px.colors.qualitative.Dark24
         destinos_unicos = flujos['Destino_Compatible'].tolist()
 
@@ -817,15 +760,12 @@ else:
             carrera: palette[i % len(palette)]
             for i, carrera in enumerate(destinos_unicos)
         }
-
-        # La misma carrera en verde
         color_map_destino[carrera_sel] = '#22c55e'
 
         node_colors = ['#60a5fa'] + [color_map_destino[d] for d in flujos['Destino_Compatible']]
         link_colors = [color_map_destino[d] for d in flujos['Destino_Compatible']]
 
         porcentajes = (flujos['N'] / n_total * 100).round(1)
-
         customdata = np.stack(
             [
                 [carrera_sel] * len(flujos),
@@ -836,9 +776,6 @@ else:
             axis=-1
         )
 
-        # --------------------------------------------
-        # Figura Sankey
-        # --------------------------------------------
         fig_sankey = go.Figure(data=[go.Sankey(
             arrangement="snap",
             node=dict(
@@ -874,41 +811,9 @@ else:
 
         st.plotly_chart(fig_sankey, use_container_width=True)
 
-        # --------------------------------------------
-        # KPIs
-        # --------------------------------------------
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Total evaluado", n_total)
-        with c2:
-            st.metric("Se mantienen", f"{n_se_quedan} ({n_se_quedan / n_total * 100:.1f}%)")
-        with c3:
-            st.metric("Migrarían", f"{n_migran} ({n_migran / n_total * 100:.1f}%)")
-
-        # --------------------------------------------
-        # Resumen numérico
-        # --------------------------------------------
-        st.markdown("### Resumen numérico")
-        for _, row in flujos.iterrows():
-            pct = row['N'] / n_total * 100 if n_total else 0
-            st.markdown(
-                f"- **{carrera_sel} → {row['Destino_Compatible']}**: "
-                f"{row['N']} estudiantes ({pct:.1f}%)"
-            )
-
-        # --------------------------------------------
-        # Tabla de apoyo
-        # --------------------------------------------
-        st.markdown("### Detalle de estudiantes")
-        st.dataframe(
-            sub[[columna_nombre, columna_carrera, 'Destino_Compatible', 'Score_Origen', 'Score_Destino', 'Migra']]
-            .sort_values(['Migra', 'Score_Destino'], ascending=[False, False]),
-            use_container_width=True
-        )
-
 # ============================================
-# 📊 Prioridades CHASIDE: histograma + Pareto fusionados
-#    Perfil en riesgo vs Jóven promesa
+# 📊 Prioridades CHASIDE por carrera
+#    Pareto fusionado
 # ============================================
 st.header("📊 Prioridades CHASIDE por carrera")
 
@@ -916,206 +821,300 @@ st.caption(
     "Seleccione una carrera para comparar el promedio del grupo 'Perfil en riesgo' "
     "contra el promedio del grupo 'Jóven promesa'. "
     "Las barras muestran el error porcentual por letra CHASIDE y la línea acumulada permite "
-    "identificar las áreas prioritarias bajo el criterio 80–20."
+    "identificar las áreas prioritarias bajo el criterio 80-20."
 )
 
-if 'df_intensidad' not in locals():
-    st.warning("No se encontró la base de intensidad. Asegúrate de haber generado previamente 'df_intensidad'.")
+df_pareto = df.copy()
+
+for a in areas:
+    df_pareto[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
+
+df_pareto = df_pareto.loc[df_intensidad.index].copy()
+df_pareto['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
+df_pareto['Carrera'] = df.loc[df_pareto.index, columna_carrera].values
+df_pareto['Carrera_Corta'] = (
+    df_pareto['Carrera']
+    .astype(str)
+    .str.replace('Ingeniería', 'Ing.', regex=False)
+)
+
+carreras_disp_p = sorted(df_pareto['Carrera_Corta'].dropna().unique())
+carrera_sel_corta = st.selectbox("Seleccione una carrera:", carreras_disp_p, key="select_pareto_fusion")
+
+sub = df_pareto[df_pareto['Carrera_Corta'] == carrera_sel_corta].copy()
+
+riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo'].copy()
+promesa = sub[sub['Nivel_Intensidad'] == 'Jóven promesa'].copy()
+
+if riesgo.empty or promesa.empty:
+    st.warning(
+        "No hay suficientes estudiantes en 'Perfil en riesgo' y 'Jóven promesa' para esta carrera."
+    )
 else:
-    df_pareto = df.copy()
+    prom_riesgo = riesgo[areas].mean()
+    prom_promesa = promesa[areas].mean()
 
-    # Totales CHASIDE por letra
+    resultados = []
     for a in areas:
-        df_pareto[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
+        meta = prom_promesa[a]
+        medido = prom_riesgo[a]
 
-    # Vincular niveles de intensidad
-    df_pareto = df_pareto.loc[df_intensidad.index].copy()
-    df_pareto['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
-    df_pareto['Carrera'] = df.loc[df_pareto.index, columna_carrera].values
+        if meta == 0:
+            error_pct = 0.0
+        else:
+            error_pct = ((meta - medido) / meta) * 100
 
-    # Abreviar Ingeniería -> Ing.
-    df_pareto['Carrera_Corta'] = (
-        df_pareto['Carrera']
-        .astype(str)
-        .str.replace('Ingeniería', 'Ing.', regex=False)
+        error_pct = max(error_pct, 0.0)
+
+        resultados.append({
+            'Letra': a,
+            'Área': areas_long[a],
+            'Meta': float(meta),
+            'Medido': float(medido),
+            'Error_Porcentual': float(error_pct)
+        })
+
+    df_plot = pd.DataFrame(resultados).sort_values('Error_Porcentual', ascending=False).reset_index(drop=True)
+
+    total_error = df_plot['Error_Porcentual'].sum()
+    if total_error == 0:
+        df_plot['Porcentaje_Relativo'] = 0.0
+        df_plot['Acumulado'] = 0.0
+    else:
+        df_plot['Porcentaje_Relativo'] = df_plot['Error_Porcentual'] / total_error * 100
+        df_plot['Acumulado'] = df_plot['Porcentaje_Relativo'].cumsum()
+
+    df_plot['Dentro_80'] = False
+    acumulado_tmp = 0.0
+    for idx in df_plot.index:
+        if acumulado_tmp < 80:
+            df_plot.at[idx, 'Dentro_80'] = True
+            acumulado_tmp = df_plot.at[idx, 'Acumulado']
+
+    if total_error == 0:
+        df_plot['Dentro_80'] = False
+
+    colores_barras = []
+    for _, row in df_plot.iterrows():
+        if row['Dentro_80']:
+            if row['Error_Porcentual'] >= 25:
+                colores_barras.append('#b91c1c')
+            elif row['Error_Porcentual'] >= 15:
+                colores_barras.append('#ea580c')
+            else:
+                colores_barras.append('#f59e0b')
+        else:
+            colores_barras.append('#94a3b8')
+
+    fig_pareto = go.Figure()
+
+    fig_pareto.add_bar(
+        x=df_plot['Letra'],
+        y=df_plot['Error_Porcentual'],
+        name='Error porcentual de estudiantes en rezago respecto a alto desempeño',
+        marker_color=colores_barras,
+        customdata=np.stack(
+            [
+                df_plot['Área'],
+                df_plot['Meta'],
+                df_plot['Medido'],
+                df_plot['Porcentaje_Relativo'],
+                df_plot['Acumulado']
+            ],
+            axis=-1
+        ),
+        hovertemplate=(
+            "<b>Letra:</b> %{x}<br>"
+            "<b>Área:</b> %{customdata[0]}<br>"
+            "<b>Valor meta (Jóven promesa):</b> %{customdata[1]:.2f}<br>"
+            "<b>Valor medido (Perfil en riesgo):</b> %{customdata[2]:.2f}<br>"
+            "<b>Error porcentual:</b> %{y:.2f}%<br>"
+            "<b>Peso relativo:</b> %{customdata[3]:.2f}%<br>"
+            "<b>Error acumulado:</b> %{customdata[4]:.2f}%<extra></extra>"
+        )
     )
 
-    areas_long = {
-        "C": "Administrativo",
-        "H": "Humanidades y Sociales",
-        "A": "Artístico",
-        "S": "Ciencias de la Salud",
-        "I": "Enseñanzas Técnicas",
-        "D": "Defensa y Seguridad",
-        "E": "Ciencias Experimentales"
-    }
+    fig_pareto.add_scatter(
+        x=df_plot['Letra'],
+        y=df_plot['Acumulado'],
+        name='Error porcentual acumulado',
+        mode='lines+markers',
+        yaxis='y2',
+        line=dict(color='#16a34a', width=3),
+        marker=dict(size=8, color='#16a34a')
+    )
 
-    carreras_disp = sorted(df_pareto['Carrera_Corta'].dropna().unique())
-    carrera_sel_corta = st.selectbox("Seleccione una carrera:", carreras_disp, key="select_pareto_fusion")
+    fig_pareto.add_hline(
+        y=80,
+        line_dash='dash',
+        line_color='#7c3aed',
+        yref='y2'
+    )
 
-    sub = df_pareto[df_pareto['Carrera_Corta'] == carrera_sel_corta].copy()
+    fig_pareto.update_layout(
+        title=f"Pareto de prioridades CHASIDE – {carrera_sel_corta}",
+        xaxis_title="Letra CHASIDE",
+        yaxis_title="Error porcentual (%)",
+        yaxis2=dict(
+            title="Porcentaje acumulado (%)",
+            overlaying='y',
+            side='right',
+            range=[0, 110]
+        ),
+        legend=dict(
+            orientation='h',
+            y=-0.18,
+            x=0.5,
+            xanchor='center'
+        ),
+        height=680,
+        margin=dict(t=70, b=120)
+    )
 
-    riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo'].copy()
-    promesa = sub[sub['Nivel_Intensidad'] == 'Jóven promesa'].copy()
+    st.plotly_chart(fig_pareto, use_container_width=True)
 
-    if riesgo.empty or promesa.empty:
-        st.warning(
-            "No hay suficientes estudiantes en 'Perfil en riesgo' y 'Jóven promesa' para esta carrera."
+    st.markdown("### 📝 Resumen ejecutivo de prioridades")
+
+    if total_error == 0:
+        st.success(
+            "No se observaron brechas entre 'Perfil en riesgo' y 'Jóven promesa' en esta carrera. "
+            "Por tanto, no se identifican áreas CHASIDE prioritarias de intervención bajo este criterio."
         )
     else:
-        prom_riesgo = riesgo[areas].mean()
-        prom_promesa = promesa[areas].mean()
+        criticas = df_plot[df_plot['Dentro_80']].copy()
+        letras_criticas = criticas['Letra'].tolist()
+        acumulado_final = criticas['Acumulado'].iloc[-1] if not criticas.empty else 0
 
-        resultados = []
-        for a in areas:
-            meta = prom_promesa[a]
-            medido = prom_riesgo[a]
+        st.markdown(
+            f"En **{carrera_sel_corta}**, las letras CHASIDE que concentran aproximadamente el "
+            f"**80% de la brecha acumulada** son: **{', '.join(letras_criticas)}**."
+        )
 
-            if meta == 0:
-                error_pct = 0.0
+        st.markdown(
+            f"Estas letras explican en conjunto **{acumulado_final:.1f}%** del problema detectado "
+            f"entre el grupo **Perfil en riesgo** y el grupo **Jóven promesa**."
+        )
+
+        st.markdown("**Áreas prioritarias de intervención:**")
+        for _, row in criticas.iterrows():
+            st.markdown(
+                f"- **{row['Letra']} ({row['Área']})**: "
+                f"error porcentual de **{row['Error_Porcentual']:.2f}%** "
+                f"y peso relativo de **{row['Porcentaje_Relativo']:.2f}%**."
+            )
+
+# ============================================
+# 📘 Consulta integral de una carrera preasignada
+# ============================================
+st.header("📘 Consulta integral de una carrera preasignada")
+
+st.caption(
+    "En este espacio puede seleccionarse una carrera para visualizar su estadística general "
+    "y los nombres de estudiantes clasificados en cada submódulo de análisis."
+)
+
+df_final = df.copy()
+
+carreras_pre = sorted(df_final['Carrera_Corta'].dropna().unique())
+carrera_pre_sel = st.selectbox("Seleccione la carrera preasignada:", carreras_pre, key="select_carrera_preasignada")
+
+sub_pre = df_final[df_final['Carrera_Corta'] == carrera_pre_sel].copy()
+
+if sub_pre.empty:
+    st.warning("No hay información disponible para esta carrera.")
+else:
+    st.markdown("### Estadística general")
+
+    total_pre = len(sub_pre)
+    conteo_sem = sub_pre['Semáforo Vocacional'].value_counts().to_dict()
+
+    verde_n = conteo_sem.get('Verde', 0)
+    amarillo_n = conteo_sem.get('Amarillo', 0)
+    rojo_n = conteo_sem.get('Rojo', 0)
+    sinsug_n = conteo_sem.get('Sin sugerencia', 0)
+    azar_n = conteo_sem.get('Respondió siempre igual', 0)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Total", total_pre)
+    with c2:
+        st.metric("Perfil coincide", verde_n)
+    with c3:
+        st.metric("Perfil no acorde", amarillo_n)
+    with c4:
+        st.metric("Respondió siempre igual", azar_n)
+
+    st.markdown("### Nombres de estudiantes por submódulo")
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Distribución por carrera y categoría",
+        "Intensidad del perfil vocacional",
+        "Transición vocacional compatible",
+        "Prioridades CHASIDE"
+    ])
+
+    with tab1:
+        categorias_map = {
+            'Verde': 'El perfil coincide con la carrera elegida',
+            'Amarillo': 'El perfil NO va acorde con la carrera elegida',
+            'Rojo': 'No se observa un perfil prioritario',
+            'Sin sugerencia': 'No se observa un perfil prioritario',
+            'Respondió siempre igual': 'Respondió siempre igual'
+        }
+        sub_tmp = sub_pre.copy()
+        sub_tmp['Categoria_Larga'] = sub_tmp['Semáforo Vocacional'].replace(categorias_map)
+
+        for cat in sorted(sub_tmp['Categoria_Larga'].dropna().unique()):
+            st.markdown(f"**{cat}**")
+            nombres_cat = sorted(sub_tmp[sub_tmp['Categoria_Larga'] == cat][columna_nombre].astype(str).tolist())
+            st.write(", ".join(nombres_cat) if nombres_cat else "Sin registros.")
+
+    with tab2:
+        sub_int = df_intensidad[df_intensidad['Carrera_Corta'] == carrera_pre_sel].copy() if 'df_intensidad' in locals() else pd.DataFrame()
+
+        for nivel in ['Sin perfil', 'Perfil en riesgo', 'Perfil en transición', 'Jóven promesa']:
+            st.markdown(f"**{nivel}**")
+            if not sub_int.empty:
+                nombres_nivel = sorted(sub_int[sub_int['Nivel_Intensidad'] == nivel][columna_nombre].astype(str).tolist())
+                st.write(", ".join(nombres_nivel) if nombres_nivel else "Sin registros.")
             else:
-                error_pct = ((meta - medido) / meta) * 100
+                st.write("Sin registros.")
 
-            # Solo nos interesa déficit real
-            error_pct = max(error_pct, 0.0)
+    with tab3:
+        st.markdown("**Transición vocacional compatible**")
+        sub_comp = sub_pre.copy()
+        sub_comp['Destino_Compatible'] = sub_comp.apply(
+            lambda row: mejor_destino_compatible(row, str(row[columna_carrera]).strip()),
+            axis=1
+        )
 
-            resultados.append({
-                'Letra': a,
-                'Área': areas_long[a],
-                'Meta': float(meta),
-                'Medido': float(medido),
-                'Error_Porcentual': float(error_pct)
-            })
+        destinos = sorted(sub_comp['Destino_Compatible'].dropna().unique())
+        for dest in destinos:
+            st.markdown(f"**{dest}**")
+            nombres_dest = sorted(sub_comp[sub_comp['Destino_Compatible'] == dest][columna_nombre].astype(str).tolist())
+            st.write(", ".join(nombres_dest) if nombres_dest else "Sin registros.")
 
-        df_plot = pd.DataFrame(resultados).sort_values('Error_Porcentual', ascending=False).reset_index(drop=True)
+    with tab4:
+        sub_p = df_pareto[df_pareto['Carrera_Corta'] == carrera_pre_sel].copy() if 'df_pareto' in locals() else pd.DataFrame()
 
-        total_error = df_plot['Error_Porcentual'].sum()
-        if total_error == 0:
-            df_plot['Porcentaje_Relativo'] = 0.0
-            df_plot['Acumulado'] = 0.0
+        riesgo = sub_p[sub_p['Nivel_Intensidad'] == 'Perfil en riesgo']
+        promesa = sub_p[sub_p['Nivel_Intensidad'] == 'Jóven promesa']
+
+        if riesgo.empty or promesa.empty:
+            st.write("No hay suficientes registros para identificar prioridades CHASIDE.")
         else:
-            df_plot['Porcentaje_Relativo'] = df_plot['Error_Porcentual'] / total_error * 100
-            df_plot['Acumulado'] = df_plot['Porcentaje_Relativo'].cumsum()
+            prom_riesgo = riesgo[areas].mean()
+            prom_promesa = promesa[areas].mean()
 
-        # Marcar letras críticas hasta cubrir 80%
-        df_plot['Dentro_80'] = False
-        acumulado_tmp = 0.0
-        for idx in df_plot.index:
-            if acumulado_tmp < 80:
-                df_plot.at[idx, 'Dentro_80'] = True
-                acumulado_tmp = df_plot.at[idx, 'Acumulado']
+            prioridades = []
+            for a in areas:
+                meta = prom_promesa[a]
+                medido = prom_riesgo[a]
+                error_pct = 0 if meta == 0 else max(((meta - medido) / meta) * 100, 0)
+                prioridades.append((a, areas_long[a], error_pct))
 
-        # Si no hubo error en ninguna letra
-        if total_error == 0:
-            df_plot['Dentro_80'] = False
+            prioridades = sorted(prioridades, key=lambda x: x[2], reverse=True)
 
-        # Figura fusionada
-        fig_pareto = go.Figure()
-
-        fig_pareto.add_bar(
-            x=df_plot['Letra'],
-            y=df_plot['Error_Porcentual'],
-            name='Error porcentual',
-            marker_color=[
-                '#dc2626' if dentro else '#94a3b8'
-                for dentro in df_plot['Dentro_80']
-            ],
-            customdata=np.stack(
-                [
-                    df_plot['Área'],
-                    df_plot['Meta'],
-                    df_plot['Medido'],
-                    df_plot['Porcentaje_Relativo'],
-                    df_plot['Acumulado']
-                ],
-                axis=-1
-            ),
-            hovertemplate=(
-                "<b>Letra:</b> %{x}<br>"
-                "<b>Área:</b> %{customdata[0]}<br>"
-                "<b>Valor meta (Jóven promesa):</b> %{customdata[1]:.2f}<br>"
-                "<b>Valor medido (Perfil en riesgo):</b> %{customdata[2]:.2f}<br>"
-                "<b>Error porcentual:</b> %{y:.2f}%<br>"
-                "<b>Peso relativo:</b> %{customdata[3]:.2f}%<br>"
-                "<b>Acumulado:</b> %{customdata[4]:.2f}%<extra></extra>"
-            )
-        )
-
-        fig_pareto.add_scatter(
-            x=df_plot['Letra'],
-            y=df_plot['Acumulado'],
-            name='Acumulado',
-            mode='lines+markers',
-            yaxis='y2',
-            line=dict(color='#16a34a', width=3),
-            marker=dict(size=8)
-        )
-
-        fig_pareto.add_hline(
-            y=80,
-            line_dash='dash',
-            line_color='orange',
-            yref='y2'
-        )
-
-        fig_pareto.update_layout(
-            title=f"Pareto de prioridades CHASIDE – {carrera_sel_corta}",
-            xaxis_title="Letra CHASIDE",
-            yaxis_title="Error porcentual (%)",
-            yaxis2=dict(
-                title="Porcentaje acumulado (%)",
-                overlaying='y',
-                side='right',
-                range=[0, 110]
-            ),
-            legend=dict(
-                orientation='h',
-                y=1.08,
-                x=0
-            ),
-            height=650
-        )
-
-        st.plotly_chart(fig_pareto, use_container_width=True)
-
-        # --------------------------------------------
-        # Resumen ejecutivo 80-20
-        # --------------------------------------------
-        st.markdown("### 📝 Resumen ejecutivo de prioridades")
-
-        if total_error == 0:
-            st.success(
-                "No se observaron brechas entre 'Perfil en riesgo' y 'Jóven promesa' en esta carrera. "
-                "Por tanto, no se identifican áreas CHASIDE prioritarias de intervención bajo este criterio."
-            )
-        else:
-            criticas = df_plot[df_plot['Dentro_80']].copy()
-
-            letras_criticas = criticas['Letra'].tolist()
-            areas_criticas = criticas['Área'].tolist()
-            acumulado_final = criticas['Acumulado'].iloc[-1] if not criticas.empty else 0
-
-            st.markdown(
-                f"En **{carrera_sel_corta}**, las letras CHASIDE que concentran aproximadamente el "
-                f"**80% de la brecha acumulada** son: **{', '.join(letras_criticas)}**."
-            )
-
-            st.markdown(
-                f"Estas áreas explican en conjunto **{acumulado_final:.1f}%** del problema detectado "
-                f"entre el grupo **Perfil en riesgo** y el grupo **Jóven promesa**."
-            )
-
-            st.markdown("**Áreas prioritarias de intervención:**")
-            for _, row in criticas.iterrows():
-                st.markdown(
-                    f"- **{row['Letra']} ({row['Área']})**: "
-                    f"error porcentual de **{row['Error_Porcentual']:.2f}%**, "
-                    f"peso relativo de **{row['Porcentaje_Relativo']:.2f}%**."
-                )
-
-        # Tabla de apoyo
-        st.markdown("### Resumen numérico")
-        st.dataframe(
-            df_plot[['Letra', 'Área', 'Meta', 'Medido', 'Error_Porcentual', 'Porcentaje_Relativo', 'Acumulado', 'Dentro_80']],
-            use_container_width=True
-        )
+            st.markdown("**Letras con mayor prioridad**")
+            for letra, area_txt, err in prioridades:
+                st.write(f"{letra} ({area_txt}): {err:.2f}%")

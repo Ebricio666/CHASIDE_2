@@ -495,19 +495,31 @@ for carrera, row in top_rojo.iterrows():
         f"({row['%_No se observa un perfil prioritario']:.1f}%) sin un perfil prioritario claramente definido."
     )
 # ============================================
-# 📊 Barra vertical de intensidad – 4 niveles
+# 📊 Intensidad del perfil vocacional por carrera
 # ============================================
 st.header("📊 Intensidad del perfil vocacional por carrera")
 
 st.caption(
-    "La barra apilada ordena a los estudiantes desde los niveles más alejados del perfil esperado "
-    "hasta los de mayor congruencia vocacional. El gradiente rojo→verde facilita identificar "
-    "riesgo vocacional y potencial de ajuste al perfil."
+    "Se construyeron dos distribuciones conceptuales: la primera corresponde a los estudiantes "
+    "cuyo perfil vocacional coincide con su elección de carrera (niveles verde fuerte y medio fuerte), "
+    "y la segunda agrupa a aquellos estudiantes cuya elección de carrera no coincide con su perfil vocacional. "
+    "Esto permite visualizar la intensidad del ajuste vocacional dentro de cada programa educativo."
 )
 
 df_intensidad = df.copy()
 df_intensidad['Score'] = df_intensidad[[f'PUNTAJE_COMBINADO_{a}' for a in areas]].max(axis=1)
-df_intensidad = df_intensidad[df_intensidad['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])].copy()
+
+# Abreviar carreras
+df_intensidad['Carrera_Corta'] = (
+    df_intensidad[columna_carrera]
+    .astype(str)
+    .str.replace('Ingeniería', 'Ing.', regex=False)
+)
+
+# Solo Verde y Amarillo
+df_intensidad = df_intensidad[
+    df_intensidad['Semáforo Vocacional'].isin(['Verde', 'Amarillo'])
+].copy()
 
 if df_intensidad.empty:
     st.info("No hay estudiantes en categorías Verde o Amarillo para construir la barra de intensidad.")
@@ -519,9 +531,11 @@ else:
         amar = grupo[grupo['Semáforo Vocacional'] == 'Amarillo'].copy()
         ver = grupo[grupo['Semáforo Vocacional'] == 'Verde'].copy()
 
+        # Amarillo → 2 niveles
         if len(amar) > 0:
             amar = amar.sort_values('Score', ascending=True).copy()
             amar['rank_pct'] = (np.arange(len(amar)) + 1) / len(amar)
+
             amar['Nivel_Intensidad'] = np.where(
                 amar['rank_pct'] <= 0.25,
                 'Sin perfil',
@@ -529,9 +543,11 @@ else:
             )
             grupo.loc[amar.index, 'Nivel_Intensidad'] = amar['Nivel_Intensidad']
 
+        # Verde → 2 niveles
         if len(ver) > 0:
             ver = ver.sort_values('Score', ascending=True).copy()
             ver['rank_pct'] = (np.arange(len(ver)) + 1) / len(ver)
+
             ver['Nivel_Intensidad'] = np.where(
                 ver['rank_pct'] > 0.75,
                 'Jóven promesa',
@@ -543,7 +559,7 @@ else:
 
     df_intensidad = (
         df_intensidad
-        .groupby(columna_carrera, group_keys=False)
+        .groupby('Carrera_Corta', group_keys=False)
         .apply(asignar_niveles_por_carrera)
         .copy()
     )
@@ -564,7 +580,7 @@ else:
 
     resumen_intensidad = (
         df_intensidad
-        .groupby([columna_carrera, 'Nivel_Intensidad'], dropna=False)
+        .groupby(['Carrera_Corta', 'Nivel_Intensidad'], dropna=False)
         .agg(
             N=(columna_nombre, 'count'),
             Estudiantes=(columna_nombre, lambda x: "<br>".join(sorted(x.astype(str).tolist())))
@@ -578,16 +594,18 @@ else:
         ordered=True
     )
 
-    resumen_intensidad = resumen_intensidad.sort_values([columna_carrera, 'Nivel_Intensidad'])
+    resumen_intensidad = resumen_intensidad.sort_values(
+        ['Carrera_Corta', 'Nivel_Intensidad']
+    )
 
     resumen_intensidad['%'] = (
-        resumen_intensidad.groupby(columna_carrera)['N']
+        resumen_intensidad.groupby('Carrera_Corta')['N']
         .transform(lambda x: 0 if x.sum() == 0 else (x / x.sum() * 100))
     )
 
     fig_intensidad = px.bar(
         resumen_intensidad,
-        x=columna_carrera,
+        x='Carrera_Corta',
         y='%',
         color='Nivel_Intensidad',
         category_orders={'Nivel_Intensidad': orden_niveles},
@@ -602,7 +620,15 @@ else:
         xaxis_title="Carrera",
         xaxis_tickangle=-30,
         height=720,
-        legend_title_text="Nivel"
+        legend_title_text="Nivel",
+        legend=dict(
+            orientation="h",
+            y=-0.25,
+            yanchor="top",
+            x=0.5,
+            xanchor="center"
+        ),
+        margin=dict(t=60, b=150)
     )
 
     fig_intensidad.update_traces(
@@ -626,6 +652,14 @@ else:
 
     st.plotly_chart(fig_intensidad, use_container_width=True)
 
+    # Interpretación
+    st.markdown("### Lectura sugerida de la escala")
+    st.markdown("""
+- **Sin perfil**: estudiantes con el menor nivel de ajuste vocacional dentro del grupo.  
+- **Perfil en riesgo**: estudiantes cuyo perfil no corresponde con la carrera elegida.  
+- **Perfil en transición**: estudiantes con cierto nivel de ajuste, pero aún no consolidado.  
+- **Jóven promesa**: estudiantes con el mayor nivel de congruencia vocacional dentro de su carrera.  
+""")
 # ============================================
 # 🌊 Sankey vocacional por carrera
 #    Carrera elegida vs carrera con mejor ajuste compatible

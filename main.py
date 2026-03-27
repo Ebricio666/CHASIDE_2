@@ -905,141 +905,18 @@ else:
             .sort_values(['Migra', 'Score_Destino'], ascending=[False, False]),
             use_container_width=True
         )
+
 # ============================================
-# 📊 PRUEBA FINAL: error porcentual por letra CHASIDE
-#    Perfil en riesgo vs Jóvenes promesa
+# 📊 Prioridades CHASIDE: histograma + Pareto fusionados
+#    Perfil en riesgo vs Jóven promesa
 # ============================================
-st.header("📊 Error porcentual por letra CHASIDE")
+st.header("📊 Prioridades CHASIDE por carrera")
 
 st.caption(
     "Seleccione una carrera para comparar el promedio del grupo 'Perfil en riesgo' "
     "contra el promedio del grupo 'Jóven promesa'. "
-    "El error porcentual indica qué letras CHASIDE requieren mayor fomento."
-)
-
-if 'df_intensidad' not in locals():
-    st.warning("No se encontró la base de intensidad. Asegúrate de haber generado previamente 'df_intensidad'.")
-else:
-    df_error = df.copy()
-
-    for a in areas:
-        df_error[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
-
-    # Alinear índices y niveles
-    df_error = df_error.loc[df_intensidad.index].copy()
-    df_error['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
-    df_error['Carrera'] = df.loc[df_error.index, columna_carrera].values
-
-    carreras_disp = sorted(df_error['Carrera'].dropna().unique())
-    carrera_sel = st.selectbox("Seleccione una carrera:", carreras_disp, key="select_error_chaside")
-
-    sub = df_error[df_error['Carrera'] == carrera_sel].copy()
-
-    riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo'].copy()
-    promesa = sub[sub['Nivel_Intensidad'] == 'Jóven promesa'].copy()
-
-    if riesgo.empty or promesa.empty:
-        st.warning(
-            "No hay suficientes estudiantes en 'Perfil en riesgo' y 'Jóven promesa' "
-            "para esta carrera."
-        )
-    else:
-        prom_riesgo = riesgo[areas].mean()
-        prom_promesa = promesa[areas].mean()
-
-        resultados = []
-        for a in areas:
-            meta = prom_promesa[a]
-            medido = prom_riesgo[a]
-
-            if meta == 0:
-                error_pct = 0
-            else:
-                error_pct = ((meta - medido) / meta) * 100
-
-            error_pct = max(error_pct, 0)
-
-            resultados.append({
-                'Letra': a,
-                'Meta': meta,
-                'Medido': medido,
-                'Error_Porcentual': error_pct
-            })
-
-        df_plot = pd.DataFrame(resultados).sort_values('Error_Porcentual', ascending=False)
-
-        areas_long = {
-            "C": "Administrativo",
-            "H": "Humanidades y Sociales",
-            "A": "Artístico",
-            "S": "Ciencias de la Salud",
-            "I": "Enseñanzas Técnicas",
-            "D": "Defensa y Seguridad",
-            "E": "Ciencias Experimentales"
-        }
-
-        df_plot['Área'] = df_plot['Letra'].map(areas_long)
-
-        fig_error = px.bar(
-            df_plot,
-            x='Letra',
-            y='Error_Porcentual',
-            color='Letra',
-            text=df_plot['Error_Porcentual'].round(1).astype(str) + '%',
-            title=f"Error porcentual por letra CHASIDE – {carrera_sel}"
-        )
-
-        fig_error.update_layout(
-            xaxis_title="Letra CHASIDE",
-            yaxis_title="Error porcentual (%)",
-            showlegend=False,
-            height=620
-        )
-
-        fig_error.update_traces(
-            hovertemplate=(
-                "<b>Letra:</b> %{x}<br>"
-                "<b>Área:</b> %{customdata[0]}<br>"
-                "<b>Valor meta (jóvenes promesa):</b> %{customdata[1]:.2f}<br>"
-                "<b>Valor medido (perfil en riesgo):</b> %{customdata[2]:.2f}<br>"
-                "<b>Error porcentual:</b> %{y:.2f}%<extra></extra>"
-            ),
-            customdata=np.stack(
-                [
-                    df_plot['Área'],
-                    df_plot['Meta'],
-                    df_plot['Medido']
-                ],
-                axis=-1
-            )
-        )
-
-        st.plotly_chart(fig_error, use_container_width=True)
-
-        st.markdown("### Resumen numérico")
-        st.dataframe(
-            df_plot[['Letra', 'Área', 'Meta', 'Medido', 'Error_Porcentual']],
-            use_container_width=True
-        )
-
-        top3 = df_plot.head(3)
-
-        st.markdown("### Áreas prioritarias por atender")
-        for _, row in top3.iterrows():
-            st.markdown(
-                f"- **{row['Letra']} ({row['Área']})**: error porcentual de **{row['Error_Porcentual']:.2f}%**"
-            )
-
-# ============================================
-# 📊 Pareto CHASIDE: prioridades de intervención
-#    Perfil en riesgo vs Jóvenes promesa
-# ============================================
-st.header("📊 Diagrama de Pareto por letra CHASIDE")
-
-st.caption(
-    "Seleccione una carrera para identificar qué letras CHASIDE concentran la mayor parte "
-    "de la brecha entre el grupo 'Perfil en riesgo' y el grupo 'Jóven promesa'. "
-    "La línea acumulada permite aplicar la regla 80-20."
+    "Las barras muestran el error porcentual por letra CHASIDE y la línea acumulada permite "
+    "identificar las áreas prioritarias bajo el criterio 80–20."
 )
 
 if 'df_intensidad' not in locals():
@@ -1047,17 +924,36 @@ if 'df_intensidad' not in locals():
 else:
     df_pareto = df.copy()
 
+    # Totales CHASIDE por letra
     for a in areas:
         df_pareto[a] = df[f'INTERES_{a}'] + df[f'APTITUD_{a}']
 
+    # Vincular niveles de intensidad
     df_pareto = df_pareto.loc[df_intensidad.index].copy()
     df_pareto['Nivel_Intensidad'] = df_intensidad['Nivel_Intensidad'].values
     df_pareto['Carrera'] = df.loc[df_pareto.index, columna_carrera].values
 
-    carreras_disp = sorted(df_pareto['Carrera'].dropna().unique())
-    carrera_sel = st.selectbox("Seleccione una carrera:", carreras_disp, key="select_pareto_chaside")
+    # Abreviar Ingeniería -> Ing.
+    df_pareto['Carrera_Corta'] = (
+        df_pareto['Carrera']
+        .astype(str)
+        .str.replace('Ingeniería', 'Ing.', regex=False)
+    )
 
-    sub = df_pareto[df_pareto['Carrera'] == carrera_sel].copy()
+    areas_long = {
+        "C": "Administrativo",
+        "H": "Humanidades y Sociales",
+        "A": "Artístico",
+        "S": "Ciencias de la Salud",
+        "I": "Enseñanzas Técnicas",
+        "D": "Defensa y Seguridad",
+        "E": "Ciencias Experimentales"
+    }
+
+    carreras_disp = sorted(df_pareto['Carrera_Corta'].dropna().unique())
+    carrera_sel_corta = st.selectbox("Seleccione una carrera:", carreras_disp, key="select_pareto_fusion")
+
+    sub = df_pareto[df_pareto['Carrera_Corta'] == carrera_sel_corta].copy()
 
     riesgo = sub[sub['Nivel_Intensidad'] == 'Perfil en riesgo'].copy()
     promesa = sub[sub['Nivel_Intensidad'] == 'Jóven promesa'].copy()
@@ -1070,52 +966,50 @@ else:
         prom_riesgo = riesgo[areas].mean()
         prom_promesa = promesa[areas].mean()
 
-        areas_long = {
-            "C": "Administrativo",
-            "H": "Humanidades y Sociales",
-            "A": "Artístico",
-            "S": "Ciencias de la Salud",
-            "I": "Enseñanzas Técnicas",
-            "D": "Defensa y Seguridad",
-            "E": "Ciencias Experimentales"
-        }
-
         resultados = []
         for a in areas:
             meta = prom_promesa[a]
             medido = prom_riesgo[a]
 
             if meta == 0:
-                error_pct = 0
+                error_pct = 0.0
             else:
                 error_pct = ((meta - medido) / meta) * 100
 
-            error_pct = max(error_pct, 0)
+            # Solo nos interesa déficit real
+            error_pct = max(error_pct, 0.0)
 
             resultados.append({
                 'Letra': a,
                 'Área': areas_long[a],
-                'Meta': meta,
-                'Medido': medido,
-                'Error_Porcentual': error_pct
+                'Meta': float(meta),
+                'Medido': float(medido),
+                'Error_Porcentual': float(error_pct)
             })
 
         df_plot = pd.DataFrame(resultados).sort_values('Error_Porcentual', ascending=False).reset_index(drop=True)
 
         total_error = df_plot['Error_Porcentual'].sum()
         if total_error == 0:
-            df_plot['Porcentaje_Relativo'] = 0
-            df_plot['Acumulado'] = 0
+            df_plot['Porcentaje_Relativo'] = 0.0
+            df_plot['Acumulado'] = 0.0
         else:
             df_plot['Porcentaje_Relativo'] = df_plot['Error_Porcentual'] / total_error * 100
             df_plot['Acumulado'] = df_plot['Porcentaje_Relativo'].cumsum()
 
-        # Identificar letras dentro del 80%
-        df_plot['Dentro_80'] = df_plot['Acumulado'] <= 80
-        if not df_plot['Dentro_80'].any() and len(df_plot) > 0:
-            df_plot.loc[0, 'Dentro_80'] = True
+        # Marcar letras críticas hasta cubrir 80%
+        df_plot['Dentro_80'] = False
+        acumulado_tmp = 0.0
+        for idx in df_plot.index:
+            if acumulado_tmp < 80:
+                df_plot.at[idx, 'Dentro_80'] = True
+                acumulado_tmp = df_plot.at[idx, 'Acumulado']
 
-        # Figura Pareto
+        # Si no hubo error en ninguna letra
+        if total_error == 0:
+            df_plot['Dentro_80'] = False
+
+        # Figura fusionada
         fig_pareto = go.Figure()
 
         fig_pareto.add_bar(
@@ -1131,17 +1025,19 @@ else:
                     df_plot['Área'],
                     df_plot['Meta'],
                     df_plot['Medido'],
-                    df_plot['Porcentaje_Relativo']
+                    df_plot['Porcentaje_Relativo'],
+                    df_plot['Acumulado']
                 ],
                 axis=-1
             ),
             hovertemplate=(
                 "<b>Letra:</b> %{x}<br>"
                 "<b>Área:</b> %{customdata[0]}<br>"
-                "<b>Valor meta:</b> %{customdata[1]:.2f}<br>"
-                "<b>Valor medido:</b> %{customdata[2]:.2f}<br>"
+                "<b>Valor meta (Jóven promesa):</b> %{customdata[1]:.2f}<br>"
+                "<b>Valor medido (Perfil en riesgo):</b> %{customdata[2]:.2f}<br>"
                 "<b>Error porcentual:</b> %{y:.2f}%<br>"
-                "<b>Peso relativo:</b> %{customdata[3]:.2f}%<extra></extra>"
+                "<b>Peso relativo:</b> %{customdata[3]:.2f}%<br>"
+                "<b>Acumulado:</b> %{customdata[4]:.2f}%<extra></extra>"
             )
         )
 
@@ -1163,7 +1059,7 @@ else:
         )
 
         fig_pareto.update_layout(
-            title=f"Pareto de brechas CHASIDE – {carrera_sel}",
+            title=f"Pareto de prioridades CHASIDE – {carrera_sel_corta}",
             xaxis_title="Letra CHASIDE",
             yaxis_title="Error porcentual (%)",
             yaxis2=dict(
@@ -1172,32 +1068,54 @@ else:
                 side='right',
                 range=[0, 110]
             ),
-            legend=dict(orientation='h', y=1.08, x=0),
+            legend=dict(
+                orientation='h',
+                y=1.08,
+                x=0
+            ),
             height=650
         )
 
         st.plotly_chart(fig_pareto, use_container_width=True)
 
-        # Resumen ejecutivo
-        letras_criticas = df_plot[df_plot['Dentro_80']]['Letra'].tolist()
-        areas_criticas = df_plot[df_plot['Dentro_80']]['Área'].tolist()
+        # --------------------------------------------
+        # Resumen ejecutivo 80-20
+        # --------------------------------------------
+        st.markdown("### 📝 Resumen ejecutivo de prioridades")
 
-        st.markdown("### Lectura ejecutiva")
-        st.markdown(
-            f"Las letras que concentran aproximadamente el **80% de la brecha** en **{carrera_sel}** son: "
-            f"**{', '.join(letras_criticas)}**."
-        )
+        if total_error == 0:
+            st.success(
+                "No se observaron brechas entre 'Perfil en riesgo' y 'Jóven promesa' en esta carrera. "
+                "Por tanto, no se identifican áreas CHASIDE prioritarias de intervención bajo este criterio."
+            )
+        else:
+            criticas = df_plot[df_plot['Dentro_80']].copy()
 
-        st.markdown("### Áreas prioritarias de intervención")
-        for _, row in df_plot[df_plot['Dentro_80']].iterrows():
+            letras_criticas = criticas['Letra'].tolist()
+            areas_criticas = criticas['Área'].tolist()
+            acumulado_final = criticas['Acumulado'].iloc[-1] if not criticas.empty else 0
+
             st.markdown(
-                f"- **{row['Letra']} ({row['Área']})**: "
-                f"error porcentual de **{row['Error_Porcentual']:.2f}%** "
-                f"y peso relativo de **{row['Porcentaje_Relativo']:.2f}%**."
+                f"En **{carrera_sel_corta}**, las letras CHASIDE que concentran aproximadamente el "
+                f"**80% de la brecha acumulada** son: **{', '.join(letras_criticas)}**."
             )
 
+            st.markdown(
+                f"Estas áreas explican en conjunto **{acumulado_final:.1f}%** del problema detectado "
+                f"entre el grupo **Perfil en riesgo** y el grupo **Jóven promesa**."
+            )
+
+            st.markdown("**Áreas prioritarias de intervención:**")
+            for _, row in criticas.iterrows():
+                st.markdown(
+                    f"- **{row['Letra']} ({row['Área']})**: "
+                    f"error porcentual de **{row['Error_Porcentual']:.2f}%**, "
+                    f"peso relativo de **{row['Porcentaje_Relativo']:.2f}%**."
+                )
+
+        # Tabla de apoyo
         st.markdown("### Resumen numérico")
         st.dataframe(
-            df_plot[['Letra', 'Área', 'Meta', 'Medido', 'Error_Porcentual', 'Porcentaje_Relativo', 'Acumulado']],
+            df_plot[['Letra', 'Área', 'Meta', 'Medido', 'Error_Porcentual', 'Porcentaje_Relativo', 'Acumulado', 'Dentro_80']],
             use_container_width=True
         )

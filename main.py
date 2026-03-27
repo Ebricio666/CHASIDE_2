@@ -812,6 +812,61 @@ else:
         st.plotly_chart(fig_sankey, use_container_width=True)
 
 # ============================================
+estrategias_chaside = {
+    "C": {
+        "area": "Administrativo",
+        "estrategia": (
+            "Fortalecer actividades de organización, planeación, seguimiento de instrucciones, "
+            "gestión del tiempo y resolución estructurada de problemas. Puede apoyarse con "
+            "bitácoras de trabajo, cronogramas, rúbricas de avance y ejercicios de análisis de casos."
+        )
+    },
+    "H": {
+        "area": "Humanidades y Sociales",
+        "estrategia": (
+            "Promover habilidades de comunicación oral y escrita, argumentación, comprensión de textos, "
+            "discusión de casos, trabajo colaborativo y análisis de situaciones sociales o éticas "
+            "relacionadas con la carrera."
+        )
+    },
+    "A": {
+        "area": "Artístico",
+        "estrategia": (
+            "Incorporar actividades que estimulen creatividad, diseño, visualización, innovación y expresión de ideas. "
+            "Se recomienda el uso de prototipos, mapas visuales, bocetos, diseño de soluciones y proyectos creativos."
+        )
+    },
+    "S": {
+        "area": "Ciencias de la Salud",
+        "estrategia": (
+            "Favorecer actividades centradas en observación, precisión, ayuda a otros, trabajo con casos, "
+            "empatía profesional y análisis aplicado. Puede reforzarse con prácticas guiadas, estudio de casos "
+            "y ejercicios de atención a necesidades humanas."
+        )
+    },
+    "I": {
+        "area": "Enseñanzas Técnicas",
+        "estrategia": (
+            "Reforzar pensamiento lógico, resolución técnica de problemas, cálculo, modelado, uso de herramientas, "
+            "prácticas de laboratorio o simulación y actividades de aplicación concreta orientadas a la carrera."
+        )
+    },
+    "D": {
+        "area": "Defensa y Seguridad",
+        "estrategia": (
+            "Impulsar liderazgo, trabajo en equipo, toma de decisiones, disciplina, responsabilidad y respuesta ante retos. "
+            "Puede fortalecerse con dinámicas de roles, coordinación de equipos, resolución de incidentes y proyectos con metas claras."
+        )
+    },
+    "E": {
+        "area": "Ciencias Experimentales",
+        "estrategia": (
+            "Estimular observación sistemática, análisis, método, experimentación, interpretación de datos y pensamiento crítico. "
+            "Se recomienda el uso de prácticas experimentales, pequeños proyectos de investigación y análisis de evidencias."
+        )
+    }
+}
+
 # 📊 Prioridades CHASIDE por carrera
 #    Pareto fusionado
 # ============================================
@@ -995,13 +1050,19 @@ else:
             f"entre el grupo **Perfil en riesgo** y el grupo **Jóven promesa**."
         )
 
-        st.markdown("**Áreas prioritarias de intervención:**")
-        for _, row in criticas.iterrows():
-            st.markdown(
-                f"- **{row['Letra']} ({row['Área']})**: "
-                f"error porcentual de **{row['Error_Porcentual']:.2f}%** "
-                f"y peso relativo de **{row['Porcentaje_Relativo']:.2f}%**."
-            )
+    st.markdown("**Áreas prioritarias de intervención y estrategia sugerida:**")
+for _, row in criticas.iterrows():
+    letra = row['Letra']
+    estrategia = estrategias_chaside.get(letra, {}).get("estrategia", "Sin estrategia definida.")
+    area_nombre = estrategias_chaside.get(letra, {}).get("area", row['Área'])
+
+    st.markdown(
+        f"""
+- **{letra} ({area_nombre})**  
+  **Brecha detectada:** error porcentual de **{row['Error_Porcentual']:.2f}%** y peso relativo de **{row['Porcentaje_Relativo']:.2f}%**.  
+  **Estrategia sugerida para {carrera_sel_corta}:** {estrategia}
+"""
+    )
 
 # ============================================
 # 📘 Consulta integral de una carrera preasignada

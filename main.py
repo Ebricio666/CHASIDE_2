@@ -297,80 +297,203 @@ por lo que sus respuestas deben interpretarse con cautela al no ofrecer evidenci
 """
 )
 # ============================================
-# 📊 Barras apiladas por carrera
+# 📊 Distribución por carrera y categoría
 # ============================================
 st.header("📊 Distribución por carrera y categoría")
 
-cats_order = ['Verde', 'Amarillo', 'Rojo', 'Respondió siempre igual', 'Sin sugerencia']
-color_map = {
-    'Verde': '#22c55e',
-    'Amarillo': '#f59e0b',
-    'Rojo': '#94a3b8',
-    'Respondió siempre igual': '#ef4444',
-    'Sin sugerencia': '#6b7280'
+st.caption(
+    "Se realizó un filtro por carrera para observar cómo respondieron los estudiantes "
+    "de cada programa educativo respecto a su ajuste vocacional."
+)
+
+# Etiquetas largas para visualización
+mapa_categorias_barras = {
+    'Verde': 'El perfil coincide con la carrera elegida',
+    'Amarillo': 'El perfil NO va acorde con la carrera elegida',
+    'Sin sugerencia': 'No se observa un perfil prioritario',
+    'Respondió siempre igual': 'Respondió siempre igual',
+    'Rojo': 'No se observa un perfil prioritario'
+}
+
+# Copia de trabajo
+df_barras = df.copy()
+df_barras['Categoría_Barras'] = df_barras['Semáforo Vocacional'].replace(mapa_categorias_barras)
+
+# Abreviar "Ingeniería" por "Ing."
+df_barras['Carrera_Corta'] = (
+    df_barras[columna_carrera]
+    .astype(str)
+    .str.replace('Ingeniería', 'Ing.', regex=False)
+)
+
+cats_order_largo = [
+    'El perfil coincide con la carrera elegida',
+    'El perfil NO va acorde con la carrera elegida',
+    'No se observa un perfil prioritario',
+    'Respondió siempre igual'
+]
+
+color_map_largo = {
+    'El perfil coincide con la carrera elegida': '#22c55e',
+    'El perfil NO va acorde con la carrera elegida': '#f59e0b',
+    'No se observa un perfil prioritario': '#6b7280',
+    'Respondió siempre igual': '#ef4444'
 }
 
 stacked = (
-    df[df['Semáforo Vocacional'].isin(cats_order)]
-    .groupby([columna_carrera, 'Semáforo Vocacional'], dropna=False)
+    df_barras[df_barras['Categoría_Barras'].isin(cats_order_largo)]
+    .groupby(['Carrera_Corta', 'Categoría_Barras'], dropna=False)
     .size()
     .reset_index(name='N')
-    .rename(columns={'Semáforo Vocacional': 'Categoría'})
+    .rename(columns={'Categoría_Barras': 'Categoría'})
 )
 
-stacked['Categoría'] = pd.Categorical(stacked['Categoría'], categories=cats_order, ordered=True)
+stacked['Categoría'] = pd.Categorical(
+    stacked['Categoría'],
+    categories=cats_order_largo,
+    ordered=True
+)
 
 modo = st.radio(
     "Modo de visualización",
     options=["Proporción (100% apilado)", "Valores absolutos"],
     horizontal=True,
-    index=0
+    index=0,
+    key="modo_barras_carrera"
 )
 
 if modo == "Proporción (100% apilado)":
     stacked['%'] = (
-        stacked.groupby(columna_carrera)['N']
+        stacked.groupby('Carrera_Corta')['N']
         .transform(lambda x: 0 if x.sum() == 0 else (x / x.sum() * 100))
     )
+
     fig_stacked = px.bar(
         stacked,
-        x=columna_carrera,
+        x='Carrera_Corta',
         y='%',
         color='Categoría',
-        category_orders={'Categoría': cats_order},
-        color_discrete_map=color_map,
+        category_orders={'Categoría': cats_order_largo},
+        color_discrete_map=color_map_largo,
         barmode='stack',
         text=stacked['%'].round(1).astype(str) + '%',
         title="Proporción (%) de estudiantes por carrera y categoría"
     )
+
     fig_stacked.update_layout(
         yaxis_title="Proporción (%)",
         xaxis_title="Carrera",
         xaxis_tickangle=-30,
-        height=620
+        height=680,
+        legend_title_text="Categoría",
+        legend=dict(
+            orientation="h",
+            y=-0.22,
+            yanchor="top",
+            x=0.5,
+            xanchor="center"
+        ),
+        margin=dict(t=60, b=140)
     )
 else:
     fig_stacked = px.bar(
         stacked,
-        x=columna_carrera,
+        x='Carrera_Corta',
         y='N',
         color='Categoría',
-        category_orders={'Categoría': cats_order},
-        color_discrete_map=color_map,
+        category_orders={'Categoría': cats_order_largo},
+        color_discrete_map=color_map_largo,
         barmode='stack',
         text='N',
         title="Estudiantes por carrera y categoría (valores absolutos)"
     )
+
     fig_stacked.update_layout(
         yaxis_title="Número de estudiantes",
         xaxis_title="Carrera",
         xaxis_tickangle=-30,
-        height=620
+        height=680,
+        legend_title_text="Categoría",
+        legend=dict(
+            orientation="h",
+            y=-0.22,
+            yanchor="top",
+            x=0.5,
+            xanchor="center"
+        ),
+        margin=dict(t=60, b=140)
     )
+
     fig_stacked.update_traces(textposition='inside', cliponaxis=False)
 
 st.plotly_chart(fig_stacked, use_container_width=True)
 
+# ============================================
+# 📝 REPORTE AUTOMÁTICO DEL SUBMÓDULO
+# ============================================
+st.markdown("### 📝 Reporte por carrera")
+
+# Tabla base por carrera con categorías ya unificadas
+resumen_carreras = (
+    df_barras.groupby(['Carrera_Corta', 'Categoría_Barras'])
+    .size()
+    .unstack(fill_value=0)
+)
+
+# Asegurar columnas
+for c in cats_order_largo:
+    if c not in resumen_carreras.columns:
+        resumen_carreras[c] = 0
+
+resumen_carreras = resumen_carreras[cats_order_largo].copy()
+resumen_carreras['Total'] = resumen_carreras.sum(axis=1)
+
+# Porcentajes
+for c in cats_order_largo:
+    resumen_carreras[f'%_{c}'] = np.where(
+        resumen_carreras['Total'] == 0,
+        0,
+        resumen_carreras[c] / resumen_carreras['Total'] * 100
+    )
+
+# Top 2 verde
+top_verde = resumen_carreras.sort_values(
+    by='El perfil coincide con la carrera elegida',
+    ascending=False
+).head(2)
+
+# Top 2 amarillo
+top_amarillo = resumen_carreras.sort_values(
+    by='El perfil NO va acorde con la carrera elegida',
+    ascending=False
+).head(2)
+
+# Top 2 rojo/no prioritario
+top_rojo = resumen_carreras.sort_values(
+    by='No se observa un perfil prioritario',
+    ascending=False
+).head(2)
+
+st.markdown("**Carreras con mayor proporción de ajuste vocacional (verde):**")
+for carrera, row in top_verde.iterrows():
+    st.markdown(
+        f"- **{carrera}**: {int(row['El perfil coincide con la carrera elegida'])} estudiantes "
+        f"({row['%_El perfil coincide con la carrera elegida']:.1f}%) con perfil acorde a la carrera elegida."
+    )
+
+st.markdown("**Carreras con mayor proporción de perfil no acorde (amarillo):**")
+for carrera, row in top_amarillo.iterrows():
+    st.markdown(
+        f"- **{carrera}**: {int(row['El perfil NO va acorde con la carrera elegida'])} estudiantes "
+        f"({row['%_El perfil NO va acorde con la carrera elegida']:.1f}%) cuyo perfil no va acorde con la carrera elegida."
+    )
+
+st.markdown("**Carreras con mayor proporción de perfil no prioritario (rojo/sin sugerencia):**")
+for carrera, row in top_rojo.iterrows():
+    st.markdown(
+        f"- **{carrera}**: {int(row['No se observa un perfil prioritario'])} estudiantes "
+        f"({row['%_No se observa un perfil prioritario']:.1f}%) sin un perfil prioritario claramente definido."
+    )
 # ============================================
 # 📊 Barra vertical de intensidad – 4 niveles
 # ============================================

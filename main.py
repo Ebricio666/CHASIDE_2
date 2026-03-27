@@ -182,9 +182,9 @@ df['Diagnóstico Primario Vocacional'] = df.apply(diagnostico, axis=1)
 df['Semáforo Vocacional'] = df.apply(semaforo, axis=1)
 
 # ============================================
-# 📌 DIAGRAMA DE PASTEL
+# 📌 DISTRIBUCIÓN DE RESPUESTAS DEL ESTUDIANTADO
 # ============================================
-st.subheader("🥧 Diagnóstico general (Pastel)")
+st.subheader("📊 Distribución de respuestas del estudiantado")
 
 mapa_categorias_pastel = {
     'Verde': 'El perfil coincide con la carrera elegida',
@@ -218,6 +218,14 @@ resumen['Categoría'] = pd.Categorical(
 )
 resumen = resumen.sort_values('Categoría')
 
+# Calcular porcentajes
+total_estudiantes = int(resumen['N'].sum())
+resumen['Porcentaje'] = np.where(
+    total_estudiantes == 0,
+    0,
+    resumen['N'] / total_estudiantes * 100
+)
+
 fig = px.pie(
     resumen,
     names='Categoría',
@@ -241,16 +249,53 @@ fig.update_traces(
 fig.update_layout(
     legend_title_text="Categoría",
     legend=dict(
-        orientation="v",
-        y=0.5,
-        yanchor="middle",
-        x=1.02,
-        xanchor="left"
-    )
+        orientation="h",
+        y=-0.15,
+        yanchor="top",
+        x=0.5,
+        xanchor="center"
+    ),
+    margin=dict(t=40, b=120)
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
+# ============================================
+# 📌 REPORTE AUTOMÁTICO DEL DIAGRAMA DE PASTEL
+# ============================================
+conteos = resumen.set_index('Categoría')['N'].to_dict()
+porcentajes = resumen.set_index('Categoría')['Porcentaje'].to_dict()
+
+n_coincide = conteos.get('El perfil coincide con la carrera elegida', 0)
+p_coincide = porcentajes.get('El perfil coincide con la carrera elegida', 0)
+
+n_no_accorde = conteos.get('El perfil NO va acorde con la carrera elegida', 0)
+p_no_accorde = porcentajes.get('El perfil NO va acorde con la carrera elegida', 0)
+
+n_sin_prioritario = conteos.get('No se observa un perfil prioritario', 0)
+p_sin_prioritario = porcentajes.get('No se observa un perfil prioritario', 0)
+
+n_azar = conteos.get('Respondió siempre igual', 0)
+p_azar = porcentajes.get('Respondió siempre igual', 0)
+
+st.markdown("### 📝 Reporte del diagnóstico general")
+
+st.markdown(
+    f"""
+Esta escala tuvo una participación de **{total_estudiantes} estudiantes**. 
+De ellos, **{n_coincide} ({p_coincide:.1f}%)** muestran que el perfil CHASIDE 
+**coincide con la carrera elegida**, por lo que constituyen el grupo mayormente alineado con su decisión vocacional.
+
+Por otro lado, **{n_no_accorde} ({p_no_accorde:.1f}%)** presentan un perfil que **no va acorde con la carrera seleccionada**, 
+lo que sugiere la necesidad de acompañamiento y orientación para prevenir dificultades de ajuste académico o vocacional.
+
+Asimismo, **{n_sin_prioritario} ({p_sin_prioritario:.1f}%)** no muestran un **perfil prioritario claramente definido**, 
+lo cual podría reflejar indecisión vocacional o un patrón de intereses y aptitudes todavía poco consolidado.
+
+Finalmente, **{n_azar} ({p_azar:.1f}%)** fueron clasificados como **respondió siempre igual**, 
+por lo que sus respuestas deben interpretarse con cautela al no ofrecer evidencia suficiente de un perfil vocacional confiable.
+"""
+)
 # ============================================
 # 📊 Barras apiladas por carrera
 # ============================================

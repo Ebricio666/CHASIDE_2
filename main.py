@@ -278,9 +278,9 @@ p_sin_prioritario = porcentajes.get('No se observa un perfil prioritario', 0)
 n_azar = conteos.get('Respondió siempre igual', 0)
 p_azar = porcentajes.get('Respondió siempre igual', 0)
 
-st.markdown("### 📝 Reporte del diagnóstico general")
+("### 📝 Reporte del diagnóstico general")
 
-st.markdown(
+(
     f"""
 Esta escala tuvo una participación de **{total_estudiantes} estudiantes**. 
 De ellos, **{n_coincide} ({p_coincide:.1f}%)** muestran que el perfil CHASIDE 
@@ -431,7 +431,7 @@ st.plotly_chart(fig_stacked, use_container_width=True)
 # ============================================
 # 📝 REPORTE AUTOMÁTICO DEL SUBMÓDULO
 # ============================================
-st.markdown("### 📝 Reporte por carrera")
+("### 📝 Reporte por carrera")
 
 # Tabla base por carrera con categorías ya unificadas
 resumen_carreras = (
@@ -654,11 +654,19 @@ else:
 
     # Interpretación
     st.markdown("### Lectura sugerida de la escala")
-    st.markdown("""
-- **Sin perfil**: estudiantes con el menor nivel de ajuste vocacional dentro del grupo.  
-- **Perfil en riesgo**: estudiantes cuyo perfil no corresponde con la carrera elegida.  
-- **Perfil en transición**: estudiantes con cierto nivel de ajuste, pero aún no consolidado.  
-- **Jóven promesa**: estudiantes con el mayor nivel de congruencia vocacional dentro de su carrera.  
+st.markdown("""
+- **Sin perfil**: estudiantes cuya elección de carrera no muestra correspondencia con su perfil vocacional. 
+Se recomienda una reevaluación vocacional y posible cambio de carrera.
+
+- **Perfil en riesgo**: estudiantes cuyo perfil vocacional presenta una coincidencia mínima con la carrera elegida. 
+Es probable que logren acreditar asignaturas de Ciencias Básicas; sin embargo, existe un alto riesgo de dificultades 
+en asignaturas específicas de la carrera.
+
+- **Perfil en transición**: estudiantes cuya elección profesional y perfil vocacional presentan congruencia, 
+aunque aún en proceso de consolidación. Se espera un bajo nivel de no acreditación en Ciencias Básicas.
+
+- **Jóven promesa**: estudiantes con una alta congruencia entre su perfil vocacional y la carrera elegida, 
+lo que favorece un desempeño académico sólido y sostenido.
 """)
 # ============================================
 # 🌊 Sankey vocacional por carrera
